@@ -2,7 +2,7 @@
 
 > **每次开发任何 DSH 插件前先读这份记忆。** 它是本仓库两个插件（计费面板、文件浏览器）从动态版到静态化、再退回动态版的完整实战记录，里面的坑每一个都是真实踩过的。
 >
-> 状态：2026-08 中旬 · 计费面板当前以动态插件方式使用中；静态版 `cost-panel-static/`（profile 挂载、投影驱动）已随本仓库维护，需要长期挂载时直接按其 README 安装。
+> 状态：2026-08 下旬 · 计费面板与文件树面板当前均以动态插件方式使用中（`cost-1` / `file-1`）；静态版 `cost-panel-static/`（投影驱动）与 `file-panel-static/`（双包 + Typert，见 §11）已随本仓库维护，需要长期挂载时按其 README 安装。
 
 ---
 
@@ -255,5 +255,37 @@ if (s.baseline === null) {
 ## 10. 决策备忘
 
 - 计费面板：**当前以动态版使用**（动态插件 ID 每会话不同，本会话为 `cost-1`，源码在本仓库 `cost-panel/`）；静态版 `cost-panel-static/` 可直接 profile 挂载长期使用
+- 文件树面板（2026-08 新做）：动态版 `file-panel/`（本会话 `file-1`）+ 静态版 `file-panel-static/`（双包，见 §11）
+
+---
+
+## 11. 文件树面板静态化实录（2026-08 下旬，双包 + Typert 方案）
+
+需求：页面右侧浮动 📁 按钮拉出文件树栏，行内 ⋯ 菜单（复制路径 / 打开文件浏览器）。
+与计费面板不同，文件树是**请求/响应**（列目录、打开资源管理器），投影（cost-panel-static 的做法）不适用 → 必须走 **Typert remote**。
+
+### 11.1 双包方案（绕开 §4.3 死锁的落地形式）
+
+- 客户端模块系统 **一行 patch = 一个包 = 一个 `exports["./client"]` bundle**（`dsh-client-modules` 源码确认）→ "同一包两个条目"做不到，必须拆两个包：
+  - `dsh-file-panel`：UI bundle（`inject: ["slots","remote","remote.filetree"]`）+ Host 服务 + typert 清单
+  - `dsh-file-panel-mount`：`inject: ["remote"]`，apply 只 `return ctx.remote.$mount(TYPERT_REMOTE)`（描述符内联，避免跨包 require）
+- 顺序由依赖保证：mount 包先挂出 `remote.filetree`，UI 包才激活。
+
+### 11.2 Typert 清单（手写要点，参照生成产物 `@deepseek-ai/dsh-message-feedback/lib/typert.host.js`）
+
+- **host 清单**：`package` 必须等于包名；`face: 'host'`；`schemas: []` 可空；invocation 的 `parameters`/`result` codec 必须 `mode: 'strict'` + `typeSymbol` + **真 zod v4 schema**（校验要求 `_zod` 标记 + `parse` 函数，`dsh-typert-loader` 的 `validateTypertManifest` 源码逐字段核对）。
+- **remote 描述符**（客户端 `$mount` 用）：**schema 可用恒等桩** `{ parse: (v) => v }`（客户端不校验，服务端用真 zod）。
+- **校验**：`validateTypertManifest('dsh-file-panel', TYPERT)` 可直接从 `@deepseek-ai/dsh-typert-loader` import 复用 —— 本轮静态版清单已用它跑通。
+- **zod 依赖**：`typert.host.js` 要 `import { z } from 'zod'`，而 web profile 的 `node_modules` 里**没有 zod**（只有手动复制的包）→ 安装时需从 dsh 安装目录手动复制 zod（MEMORY §3.4，已确认 dsh 自带 zod v4.4.3）。node_modules 已被 .gitignore，仓库里不放。
+
+### 11.3 调用形态
+
+- 客户端调用：`const r = await ctx.remote.filetree.list({ path }); r.ok ? r.value : r.error`（RemoteResult 包装，参照 `dsh-client-runtime` 消费 `remote.commands.execute` 的模式）。
+- 静态 bundle 里 `document`/`window`/`navigator`/`setTimeout` 都是页面全局，可直接用（动态版才有 closure traps）。
+- 服务端：`ctx.provide('filetree', {...})` **无条件提供**（§5.3），方法内部惰性 `ctx.get('fs'/'subprocess')`。
+
+### 11.4 状态
+
+- 动态版 `file-1` 运行中；静态版源码已入库并通过语法 + typert 清单校验，**尚未挂载验证**（需复制包 + patch 两行 + 复制 zod + 重启 dsh web，重启会中断会话，由用户执行）。
 - **下次静态化前必读**：§3（包/格式）、§4（守卫/死锁/ctx）、§5（双条目）、§6（分叉/投影）
 - 静态化建议路径：先只固化文件浏览器（双包分离）验证跑通，再动计费
