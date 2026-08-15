@@ -25,6 +25,9 @@ window.__ModuleLoader__.load({
 .dsc-card{position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);z-index:1200;box-sizing:border-box;width:288px;background:var(--dsw-alias-bg-overlay);border:1px solid var(--dsw-alias-border-l1);border-radius:12px;box-shadow:0 10px 32px rgba(0,0,0,.22);padding:10px 12px;color:var(--dsw-alias-label-primary);font-family:Inter,var(--dsw-font-family)}
 .dsc-head{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--dsw-alias-label-secondary);margin-bottom:6px}
 .dsc-titleGroup{display:flex;align-items:center;gap:6px;min-width:0}
+.dsc-fork{font-size:9px;line-height:1;padding:2px 6px;border-radius:6px;font-weight:600;white-space:nowrap}
+.dsc-fork.forked{background:rgba(250,204,21,.25);color:#b45309;border:1px solid rgba(250,204,21,.5)}
+.dsc-fork.original{background:rgba(34,197,94,.20);color:#15803d;border:1px solid rgba(34,197,94,.45)}
 .dsc-total{font-size:20px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.2}
 .dsc-sub{font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:2px}
 .dsc-badge{font-size:10px;border:1px solid var(--dsw-alias-border-l1);border-radius:999px;padding:1px 7px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
@@ -233,8 +236,28 @@ window.__ModuleLoader__.load({
       var turn = (proj && proj.lastTurn) || null;
       var scheme = proj && proj.scheme;
       var last = proj && proj.lastCall;
-      var history = (proj && proj.history) || [];
       var prices = proj && proj.prices;
+      // 分叉会话:从分叉点(seedLength)起算,显示金额 = 总费用 - 分叉前费用
+      var fi = (proj && proj.global && proj.global.forks && proj.global.forks[props.sessionId]) || null;
+      var forked = !!(fi && fi.forked);
+      var seedLength = fi ? fi.seedLength : null;
+      var preFork = fi ? {
+        cost: fi.preForkCost || 0, calls: fi.preForkCalls || 0,
+        inputTokens: fi.preForkInput || 0, outputTokens: fi.preForkOutput || 0, cacheTokens: fi.preForkCache || 0,
+        relayCostRmb: fi.preForkRelay || 0, legacyCostRmb: fi.preForkLegacy || 0,
+      } : null;
+      var shown = preFork ? {
+        calls: t.calls - preFork.calls,
+        inputTokens: t.inputTokens - preFork.inputTokens,
+        outputTokens: t.outputTokens - preFork.outputTokens,
+        cacheTokens: t.cacheTokens - preFork.cacheTokens,
+        relayCostRmb: t.relayCostRmb - preFork.relayCostRmb,
+        legacyCostRmb: t.legacyCostRmb - preFork.legacyCostRmb,
+        totalCostRmb: t.totalCostRmb - preFork.cost,
+      } : t;
+      var history = ((proj && proj.history) || []).filter(function (c) {
+        return !forked || seedLength === null || c.seq > seedLength;
+      });
 
       var openState = react.useState(false);
       var open = openState[0], setOpen = openState[1];
@@ -303,7 +326,7 @@ window.__ModuleLoader__.load({
         { label: '缓存', color: '#a78bfa', v: buckets.cache },
       ];
       // 所有价格统一人民币显示:Relay 额度按 1$ = ¥0.4 折算。
-      var creditLine = t.relayCostRmb > 0 ? 'Relay 折算 ' + fmtYuan(t.relayCostRmb) : '';
+      var creditLine = shown.relayCostRmb > 0 ? 'Relay 折算 ' + fmtYuan(shown.relayCostRmb) : '';
 
       var renderPrices = function () {
         if (!prices) return react.createElement('div', { className: 'dsc-empty' }, '定价表加载失败');
@@ -371,16 +394,17 @@ window.__ModuleLoader__.load({
 
       return react.createElement('div', { className: 'dsc-wrap', onMouseEnter: function () { cancelClose(); setOpen(true); }, onMouseLeave: scheduleClose },
         react.createElement('div', { className: 'dsc-chip', title: 'DeepSeek 计费 · 悬停查看详情' },
-          react.createElement('span', null, fmtYuan(t.totalCostRmb))),
+          react.createElement('span', null, fmtYuan(shown.totalCostRmb))),
         bubbles.length > 0 && react.createElement('div', { className: 'dsc-bubbles' },
           bubbles.map(function (b) { return react.createElement('div', { key: b.id, className: 'dsc-bubble' + (b.leave ? ' leave' : '') }, fmtYuan(b.cost)); })),
         open && react.createElement('div', { className: 'dsc-card' },
           react.createElement('div', { className: 'dsc-head' },
             react.createElement('div', { className: 'dsc-titleGroup' },
-              react.createElement('span', null, '本对话费用')),
+              react.createElement('span', null, '本对话费用'),
+              react.createElement('span', { className: 'dsc-fork ' + (forked ? 'forked' : 'original') }, forked ? '分叉会话' : '原会话')),
             react.createElement('span', { className: 'dsc-badge' + (last && last.billing === 'relay' ? ' relay' : '') }, badgeText)),
-          react.createElement('div', { className: 'dsc-total' }, fmtYuan(t.totalCostRmb)),
-          react.createElement('div', { className: 'dsc-sub' }, '输入 ' + fmtTok(t.inputTokens) + ' · 输出 ' + fmtTok(t.outputTokens) + ' · 缓存 ' + fmtTok(t.cacheTokens) + (creditLine ? ' · ' + creditLine : '')),
+          react.createElement('div', { className: 'dsc-total' }, fmtYuan(shown.totalCostRmb)),
+          react.createElement('div', { className: 'dsc-sub' }, '输入 ' + fmtTok(shown.inputTokens) + ' · 输出 ' + fmtTok(shown.outputTokens) + ' · 缓存 ' + fmtTok(shown.cacheTokens) + (creditLine ? ' · ' + creditLine : '')),
           react.createElement('div', { className: 'dsc-body' },
             react.createElement(Donut, { input: buckets.input, output: buckets.output, cache: buckets.cache }),
             react.createElement('div', { className: 'dsc-legend' },

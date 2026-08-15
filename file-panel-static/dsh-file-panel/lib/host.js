@@ -56,10 +56,13 @@ class FileTreeService extends TypertRemoteService {
     const subprocess = this.ctx.get('subprocess');
     if (fs === undefined || subprocess === undefined) return { ok: false, error: '系统服务不可用' };
     try {
+      const sep = path.indexOf('\\') !== -1 ? '\\' : '/';
+      const idx = path.lastIndexOf(sep);
+      // v6:不再用 /select,(经 cmd 传递解析不可靠,实测会开错目录),
+      // 直接打开目标目录:文件→父目录,文件夹→自身。
+      const targetDir = kind === 'dir' ? path : (idx > 0 ? path.slice(0, idx) : path);
       const scriptPath = 'C:\\Users\\22320\\.dsh\\dsh-reveal.cmd';
-      const line = kind === 'dir'
-        ? 'explorer.exe "' + path + '"'
-        : 'explorer.exe "/select,' + path + '"';
+      const line = 'explorer.exe "' + targetDir + '"';
       const target = await fs.resolve(scriptPath);
       await fs.writeText(target, '@echo off\r\nchcp 65001 >nul\r\n' + line + '\r\n');
       const cmd = await subprocess.resolveExecutable('cmd.exe');

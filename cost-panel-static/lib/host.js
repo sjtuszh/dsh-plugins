@@ -226,7 +226,9 @@ function aggregateStats(byDay, todayKey, monthPrefix) {
 
 // 全局累计(所有会话/工作区):由 syncGlobal 增量回填所有已加载会话的事件,
 // 以每会话事件索引(GLOBAL.idx)去重,重启后首次计算即可含全量历史。
-const GLOBAL = { calls: 0, totalCostRmb: 0, relayCostRmb: 0, legacyCostRmb: 0, byDay: {}, idx: {} };
+// forks: 每会话分叉信息(header.seedLength 是唯一可靠判据;分叉会话的分叉前
+// 费用单独累计,客户端据此把显示金额从分叉点起算)。
+const GLOBAL = { calls: 0, totalCostRmb: 0, relayCostRmb: 0, legacyCostRmb: 0, byDay: {}, idx: {}, forks: {} };
 function accumulateGlobal(entry) {
   GLOBAL.calls += 1;
   GLOBAL.totalCostRmb += entry.totalCostRmb;
@@ -244,13 +246,42 @@ function makeSyncGlobal(sessions) {
       const evs = session.events;
       if (!evs) continue;
       const id = session.id;
+      const h = session.header || {};
+      const seed = typeof h.seedLength === 'number' && h.seedLength > 0 ? h.seedLength : null;
+      let fi = GLOBAL.forks[id];
+      if (!fi) {
+        fi = {
+          forked: seed !== null,
+          seedLength: seed,
+          preForkCost: 0, preForkCalls: 0,
+          preForkInput: 0, preForkOutput: 0, preForkCache: 0,
+          preForkRelay: 0, preForkLegacy: 0,
+          done: seed === null, // 原会话无需区分
+        };
+        GLOBAL.forks[id] = fi;
+      }
       let i = GLOBAL.idx[id] ?? 0;
       while (i < evs.length) {
         const ev = evs[i];
         i += 1;
         if (typeof ev.seq !== 'number') continue;
         const entry = computeEntry(typeof ev.time === 'number' ? ev : { ...ev, time: now });
-        if (entry) accumulateGlobal(entry);
+        if (!entry) continue;
+        accumulateGlobal(entry);
+        // 分叉会话:分叉前(seq <= seedLength)的费用单独累计,供"从0计起"
+        if (fi.forked && !fi.done) {
+          if (ev.seq <= fi.seedLength) {
+            fi.preForkCost += entry.totalCostRmb;
+            fi.preForkCalls += 1;
+            fi.preForkInput += entry.inputTokens;
+            fi.preForkOutput += entry.outputTokens;
+            fi.preForkCache += entry.cacheTokens;
+            fi.preForkRelay += entry.relayCostRmb;
+            fi.preForkLegacy += entry.legacyCostRmb;
+          } else {
+            fi.done = true; // 事件按 seq 顺序,已越过 seed 边界
+          }
+        }
       }
       GLOBAL.idx[id] = i;
     }
@@ -315,6 +346,7 @@ export default {
             statsToday: global.statsToday,
             statsMonth: global.statsMonth,
             label: { today: todayKey, month: monthPrefix },
+            forks: GLOBAL.forks,
           },
           prices: {
             creditToRmb: CREDIT_TO_RMB,

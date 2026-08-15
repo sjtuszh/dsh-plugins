@@ -7,11 +7,11 @@
 - 刷新策略：**每次点击 📁 按钮刷新** + 面板打开时**每 30s 自动刷新**（root + 已展开目录）
 - 每个文件/文件夹行右侧 **⋯** → 菜单：
   - **复制文件地址**：`navigator.clipboard.writeText`（失败回退 `execCommand`），Toast 提示
-  - **打开文件浏览器查看**：经 `shell`（PowerShell）传参调用 `explorer /select,`——文件正确定位到所在目录并选中，文件夹直接打开
+  - **打开文件浏览器查看**：直接打开目标目录——**文件打开其父目录、文件夹打开自身**（`explorer.exe "目录"` 经临时 .cmd 执行；不用 `/select,`，规避 argv/命令传递的引号解析坑）
 
 ## ✨ 特性
 
-- **Host RPC**：`filetree:list`（`fs.resolve/stat/listDir/processPath`，条目自带 type，目录在前名称排序）、`filetree:reveal`（`subprocess` spawn `explorer.exe`，路径经 `resolveExecutable` 解析，不硬编码）
+- **Host RPC**：`filetree:list`（`fs.resolve/stat/listDir/processPath`，条目自带 type，目录在前名称排序）、`filetree:reveal`（`explorer.exe "目标目录"`——文件→父目录、文件夹→自身，经临时 .cmd + `cmd /c` 执行）
 - **会话感知**：根目录跟随当前会话 cwd（`useSessions` 快照的 `current` 会话），切换会话自动重置
 - **双轨路径归一化**：正斜杠的盘符路径自动转反斜杠（`nativeOf`）
 - **懒加载**：展开目录才拉取，带缓存与并发去重（loading 表）；面板内菜单点击外部/Esc 关闭

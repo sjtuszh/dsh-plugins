@@ -290,8 +290,9 @@ if (s.baseline === null) {
 - 根因链（两层都一样）：
   1. `dsh-subprocess-local` 的 `spawn()` **没有 `windowsVerbatimArguments: true`**（源码确认），Node 默认把参数内嵌 `"` 转义成 `\"`，`explorer /select,"C:\path"` 解析失败 → 回退默认位置；
   2. **走 `shell` 服务也没用**：`dsh-pwsh-local` 把命令作为**单个 `-Command` argv 元素**传给 pwsh（源码确认），命令串里的引号同样被转义 → 一层套一层，还是错。
-- 最终方案：**命令写入临时 `.cmd` 文件（`fs.writeText` 不经 argv 序列化），再 `cmd /c <file>` 执行**。实测（node 打 argv 探针）：cmd 会剥离外层引号，但**完整保留含空格的路径** → 批量行用**整参引号**形式 `explorer.exe "/select,C:\path"`（目录用 `"C:\path"`），`chcp 65001 >nul` 保证中文路径按 UTF-8 解析。脚本固定为 `C:\Users\22320\.dsh\dsh-reveal.cmd`（每次覆盖写，无累积）。
-- 结论：Windows 下任何**带内嵌引号**的参数都不要直接走 subprocess/shell argv；要么整参引号经批处理文件，要么确认实现开了 verbatim。
+- 最终方案（第一版）：**命令写入临时 `.cmd` 文件（`fs.writeText` 不经 argv 序列化），再 `cmd /c <file>` 执行**。实测（node 打 argv 探针）：cmd 会剥离外层引号，但**完整保留含空格的路径**；`chcp 65001 >nul` 保证中文路径按 UTF-8 解析。脚本固定为 `C:\Users\22320\.dsh\dsh-reveal.cmd`（每次覆盖写，无累积）。
+- **但 `/select,` 经 cmd 传递仍不可靠**（用户实测中文路径 `Desktop\软件\使用指南.md` 依然开错目录，v3 内嵌引号、v4 整参引号两种形式都试过）→ **v5 最终方案：放弃 `/select,`，直接打开目标目录**——文件→父目录、文件夹→自身，批量行 `explorer.exe "目标目录"`。这是 explorer 最基本操作，不可能开错目录（代价：不做文件高亮）。
+- 结论：Windows 下任何**带内嵌引号**的参数都不要直接走 subprocess/shell argv；`explorer` 的 `/select,` 经 cmd 传递解析不可靠，求稳就开目录不带 `/select,`。
 
 ### 11.4b 真实踩坑：网关要求 `typertRemote` 绑定（静态版 v5 修复）
 
