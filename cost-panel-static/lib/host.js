@@ -64,7 +64,7 @@ function initState() {
   return {
     calls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, cacheTokens: 0,
     relayCostCredit: 0, relayCostRmb: 0, legacyCostRmb: 0, totalCostRmb: 0,
-    lastCall: null, lastTurnKey: null, turns: {}, history: [],
+    lastCall: null, lastTurnKey: null, turns: {}, history: [], byDay: {},
   };
 }
 
@@ -158,6 +158,23 @@ function fold(state, event) {
     t.models[model] = (t.models[model] || 0) + 1;
     state.lastTurnKey = turnKey;
   }
+
+  // 用量统计:按北京时间按 天/小时/模型 累计花费(人民币)
+  const mkey = model || 'unknown';
+  const bj = new Date(time + 8 * 3600e3);
+  const dateKey = bj.toISOString().slice(0, 10);
+  const hourKey = String(bj.getUTCHours()).padStart(2, '0');
+  let day = state.byDay[dateKey];
+  if (!day) { day = { total: 0, calls: 0, byHour: {}, byModel: {} }; state.byDay[dateKey] = day; }
+  day.total += totalCostRmb;
+  day.calls += 1;
+  let hour = day.byHour[hourKey];
+  if (!hour) { hour = {}; day.byHour[hourKey] = hour; }
+  hour[mkey] = (hour[mkey] || 0) + totalCostRmb;
+  let dm = day.byModel[mkey];
+  if (!dm) { dm = { cost: 0, calls: 0 }; day.byModel[mkey] = dm; }
+  dm.cost += totalCostRmb;
+  dm.calls += 1;
 }
 
 export default {
@@ -167,7 +184,7 @@ export default {
     ctx.sessionProjections.register({
       key: 'costSnapshot',
       schema: { parse: (v) => v },
-      stateVersion: 1,
+      stateVersion: 2,
       init: initState,
       apply(state, event) {
         fold(state, event);
@@ -177,6 +194,36 @@ export default {
         const now = Date.now();
         const ltk = state.lastTurnKey;
         const turn = ltk !== null && ltk !== undefined ? state.turns[ltk] || null : null;
+
+        // 用量统计:今日按小时,本月按天;均为人民币
+        const bj = new Date(now + 8 * 3600e3);
+        const todayKey = bj.toISOString().slice(0, 10);
+        const monthPrefix = todayKey.slice(0, 7);
+        const td = state.byDay[todayKey];
+        const statsToday = td ? {
+          total: td.total, calls: td.calls, byHour: td.byHour, byModel: td.byModel,
+        } : { total: 0, calls: 0, byHour: {}, byModel: {} };
+        const statsMonth = { total: 0, calls: 0, byDay: {}, byModel: {} };
+        for (const key of Object.keys(state.byDay)) {
+          if (!key.startsWith(monthPrefix)) continue;
+          const dom = String(Number(key.slice(8, 10)));
+          const day = state.byDay[key];
+          statsMonth.total += day.total;
+          statsMonth.calls += day.calls;
+          let db = statsMonth.byDay[dom];
+          if (!db) { db = {}; statsMonth.byDay[dom] = db; }
+          for (const hourKey2 of Object.keys(day.byHour)) {
+            const hm = day.byHour[hourKey2];
+            for (const mk of Object.keys(hm)) db[mk] = (db[mk] || 0) + hm[mk];
+          }
+          for (const mk of Object.keys(day.byModel)) {
+            let mm = statsMonth.byModel[mk];
+            if (!mm) { mm = { cost: 0, calls: 0 }; statsMonth.byModel[mk] = mm; }
+            mm.cost += day.byModel[mk].cost;
+            mm.calls += day.byModel[mk].calls;
+          }
+        }
+
         return {
           totals: {
             calls: state.calls, inputTokens: state.inputTokens, outputTokens: state.outputTokens,
@@ -191,6 +238,9 @@ export default {
           lastCall: state.lastCall,
           history: state.history,
           scheme: schemeInfo(now),
+          statsToday,
+          statsMonth,
+          statsLabel: { today: todayKey, month: monthPrefix },
           prices: {
             creditToRmb: CREDIT_TO_RMB,
             defaultRelay: DEFAULT_RELAY,

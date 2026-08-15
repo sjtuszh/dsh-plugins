@@ -284,8 +284,26 @@ if (s.baseline === null) {
 - 静态 bundle 里 `document`/`window`/`navigator`/`setTimeout` 都是页面全局，可直接用（动态版才有 closure traps）。
 - 服务端：`ctx.provide('filetree', {...})` **无条件提供**（§5.3），方法内部惰性 `ctx.get('fs'/'subprocess')`。
 
-### 11.4 状态
+### 11.4 真实踩坑：explorer /select 的 argv 引号（v3/v4 修复）
 
-- 动态版 `file-1` 运行中；静态版源码已入库并通过语法 + typert 清单校验，**尚未挂载验证**（需复制包 + patch 两行 + 复制 zod + 重启 dsh web，重启会中断会话，由用户执行）。
+- 症状：`filetree:reveal` 点击后资源管理器打开了，但**统一跳到 `C:\Users\22320\Documents`**，没有定位到文件。
+- 根因链（两层都一样）：
+  1. `dsh-subprocess-local` 的 `spawn()` **没有 `windowsVerbatimArguments: true`**（源码确认），Node 默认把参数内嵌 `"` 转义成 `\"`，`explorer /select,"C:\path"` 解析失败 → 回退默认位置；
+  2. **走 `shell` 服务也没用**：`dsh-pwsh-local` 把命令作为**单个 `-Command` argv 元素**传给 pwsh（源码确认），命令串里的引号同样被转义 → 一层套一层，还是错。
+- 最终方案：**命令写入临时 `.cmd` 文件（`fs.writeText` 不经 argv 序列化），再 `cmd /c <file>` 执行**。实测（node 打 argv 探针）：cmd 会剥离外层引号，但**完整保留含空格的路径** → 批量行用**整参引号**形式 `explorer.exe "/select,C:\path"`（目录用 `"C:\path"`），`chcp 65001 >nul` 保证中文路径按 UTF-8 解析。脚本固定为 `C:\Users\22320\.dsh\dsh-reveal.cmd`（每次覆盖写，无累积）。
+- 结论：Windows 下任何**带内嵌引号**的参数都不要直接走 subprocess/shell argv；要么整参引号经批处理文件，要么确认实现开了 verbatim。
+
+### 11.4b 真实踩坑：网关要求 `typertRemote` 绑定（静态版 v5 修复）
+
+- 症状（静态版挂载后）：目录列表报 **`typert gateway: filetree/list: Service "filetree" has no visible typertRemote binding`**（清单已注册、端点被识别，但调用时服务对象不合格）。
+- 根因（`dsh-api-gateway` 的 `validateBinding` 源码确认）：网关 `ctx.get(serviceKey)` 拿到服务对象后，要求对象上有 `typertRemote` 字段 = `{ service: <实例>, serviceKey, namespace }`。**普通 `ctx.provide('filetree', { 普通对象 })` 过不了**。
+- 修复：服务类继承 **`@deepseek-ai/dsh-typert-protocol` 的 `TypertRemoteService`**（Cordis `Service` 子类）——构造器 `super(ctx, key)` 走 `ctx.reflect.provide(key, this)` 自动注册（随 fiber 卸载自动注销），并打上 `this.typertRemote = { service: this, serviceKey, namespace }` 绑定。`@Remote` 装饰器仅 SRC 模式需要，strict 清单不需要。
+- 验证方法：假 ctx 实例化后检查 `inst.typertRemote.service === inst`（循环引用是正常的，JSON.stringify 会报 circular，这反而是绑定存在的证据）。
+- 网关调用链备忘：`resolveDescriptor`（strict 优先）→ `assertExactArguments`（参数必须精确等于 wire 字段集）→ `ctx.get(service)` → `validateBinding`（typertRemote）→ 按 descriptor.parameters 解码 → `Reflect.apply(service[method], ...)` → 结果按 result codec 解码。
+
+### 11.5 状态
+
+- 动态版 `file-1` 已迭代到 `pkg-4`（v2 样式/刷新 → v3 临时 .cmd 方案 → v4 整参引号形式），用户已验证定位正确。
+- 静态版：已装入 `profiles/web`（双包 + patch 三行：cost-panel/file-panel/file-panel-mount），组合树经 `dsh --profile web --dump-config` 验证；typert 清单过真实校验器；v5 host 改用 `TypertRemoteService`（绑定坑 §11.4b）。**重启验证中**——当前等待用户重启后确认。
 - **下次静态化前必读**：§3（包/格式）、§4（守卫/死锁/ctx）、§5（双条目）、§6（分叉/投影）
 - 静态化建议路径：先只固化文件浏览器（双包分离）验证跑通，再动计费

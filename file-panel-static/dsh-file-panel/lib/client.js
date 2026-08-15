@@ -1,5 +1,5 @@
 // ============================================================================
-// 文件树浏览面板 — Client 半边(静态版 bundle)
+// 文件树浏览面板 — Client 半边(静态版 bundle v2)
 // ----------------------------------------------------------------------------
 // 注册进 shell.overlay(root 级浮动层):
 //  1. 右侧浮动 📁 小按钮,点击滑出右侧文件栏;
@@ -7,6 +7,11 @@
 //  3. 每个文件/文件夹行右侧 ⋯ 菜单:复制文件地址 / 打开文件浏览器查看。
 // RPC 走 Typert remote(ctx.remote.filetree.*),由 dsh-file-panel-mount 包
 // 挂载描述符;本包只消费(inject ["remote","remote.filetree"]),避免自依赖死锁。
+//
+// v2 变更(与动态版一致):
+//  - 图标贴面板左缘(open 时 right:310px);
+//  - 面板实底(layer-1),行悬停 layer-2(深色主题更亮,不再发黑);
+//  - 每次点击 📁 刷新;打开时每 30s 自动刷新(window.setInterval)。
 // 注意:组件定义在 apply 内部闭包捕获 ctx(模块顶层没有 ctx)。
 // ============================================================================
 
@@ -19,31 +24,32 @@ window.__ModuleLoader__.load({
     var react = require("react");
 
     var CSS = `
-.ftp-fab{position:fixed;right:10px;top:50%;transform:translateY(-50%);z-index:2000;pointer-events:auto;width:38px;height:38px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.18);transition:background .12s,border-color .12s}
-.ftp-fab:hover{border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1)}
+.ftp-fab{position:fixed;right:10px;top:50%;transform:translateY(-50%);z-index:2000;pointer-events:auto;width:38px;height:38px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.18);transition:right .18s ease-out,background .12s,border-color .12s}
+.ftp-fab:hover{border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2)}
 .ftp-fab.active{background:rgba(37,99,235,.14);border-color:rgba(37,99,235,.5)}
-.ftp-panel{position:fixed;top:0;right:0;bottom:0;width:300px;max-width:86vw;z-index:1990;pointer-events:auto;display:flex;flex-direction:column;background:var(--dsw-alias-bg-overlay);border-left:1px solid var(--dsw-alias-border-l1);box-shadow:-10px 0 32px rgba(0,0,0,.18);transform:translateX(105%);transition:transform .18s ease-out;color:var(--dsw-alias-label-primary);font-family:Inter,var(--dsw-font-family);font-size:12px}
+.ftp-fab.panel-open{right:310px}
+.ftp-panel{position:fixed;top:0;right:0;bottom:0;width:300px;max-width:86vw;z-index:1990;pointer-events:auto;display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-1);border-left:1px solid var(--dsw-alias-border-l1);box-shadow:-10px 0 32px rgba(0,0,0,.18);transform:translateX(105%);transition:transform .18s ease-out;color:var(--dsw-alias-label-primary);font-family:Inter,var(--dsw-font-family);font-size:12px}
 .ftp-panel.open{transform:translateX(0)}
 .ftp-head{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--dsw-alias-border-l1);flex:none}
 .ftp-title{font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .ftp-btn{width:24px;height:24px;flex:none;border:none;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center}
-.ftp-btn:hover{background:var(--dsw-alias-bg-layer-1)}
+.ftp-btn:hover{background:var(--dsw-alias-bg-layer-2)}
 .ftp-body{flex:1;overflow-y:auto;padding:6px 4px}
 .ftp-root{font-size:11px;color:var(--dsw-alias-label-secondary);padding:4px 8px 6px;border-bottom:1px solid var(--dsw-alias-border-l1);margin-bottom:4px;word-break:break-all}
 .ftp-row{display:flex;align-items:center;gap:4px;height:26px;padding:0 6px;border-radius:6px;cursor:pointer;white-space:nowrap}
-.ftp-row:hover{background:var(--dsw-alias-bg-layer-1)}
+.ftp-row:hover{background:var(--dsw-alias-bg-layer-2)}
 .ftp-arrow{width:14px;flex:none;font-size:10px;color:var(--dsw-alias-label-secondary);text-align:center;display:inline-flex;justify-content:center}
 .ftp-ic{flex:none;font-size:13px;width:18px;text-align:center}
 .ftp-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .ftp-dots{flex:none;width:20px;height:20px;border:none;border-radius:5px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-size:13px;line-height:1;opacity:0;display:flex;align-items:center;justify-content:center}
 .ftp-row:hover .ftp-dots,.ftp-dots.show{opacity:1}
-.ftp-dots:hover{background:var(--dsw-alias-interactive-bg-hover,var(--dsw-alias-bg-layer-1))}
+.ftp-dots:hover{background:var(--dsw-alias-bg-layer-2)}
 .ftp-hint{font-size:11px;color:var(--dsw-alias-label-secondary);padding:10px 12px}
 .ftp-empty{font-size:11px;color:var(--dsw-alias-label-secondary);padding:8px 12px}
 .ftp-err{font-size:11px;color:#e5484d;padding:6px 12px;word-break:break-all}
-.ftp-menu{position:fixed;z-index:2100;pointer-events:auto;min-width:172px;background:var(--dsw-alias-bg-overlay);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.22);padding:4px;color:var(--dsw-alias-label-primary);font-size:12px}
+.ftp-menu{position:fixed;z-index:2100;pointer-events:auto;min-width:172px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.22);padding:4px;color:var(--dsw-alias-label-primary);font-size:12px}
 .ftp-mi{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;cursor:pointer;white-space:nowrap}
-.ftp-mi:hover{background:var(--dsw-alias-bg-layer-1)}
+.ftp-mi:hover{background:var(--dsw-alias-bg-layer-2)}
 .ftp-toast{position:fixed;right:14px;bottom:18px;z-index:2200;pointer-events:none;background:rgba(0,0,0,.82);color:#fff;font-size:12px;padding:7px 12px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.25);max-width:60vw;word-break:break-all;font-family:Inter,var(--dsw-font-family)}
 `;
 
@@ -98,7 +104,12 @@ window.__ModuleLoader__.load({
             n[path] = { loading: true, error: null, items: (t[path] && t[path].items) || [] };
             return n;
           });
-          var p = ctx.remote.filetree.list({ path: path });
+          var p = null;
+          try {
+            p = ctx.remote.filetree.list({ path: path });
+          } catch (e) {
+            p = null;
+          }
           if (p && typeof p.then === 'function') {
             p.then(function (r) {
               delete loading.current[path];
@@ -125,6 +136,15 @@ window.__ModuleLoader__.load({
           }
         }
 
+        function refresh() {
+          if (!root) return;
+          var paths = [root];
+          for (var k in expanded) if (Object.prototype.hasOwnProperty.call(expanded, k)) paths.push(k);
+          for (var i = 0; i < paths.length; i++) loadDir(paths[i]);
+        }
+        var refreshRef = react.useRef(refresh);
+        refreshRef.current = refresh;
+
         react.useEffect(function () {
           if (cwd === prevCwd.current) return;
           prevCwd.current = cwd;
@@ -137,6 +157,13 @@ window.__ModuleLoader__.load({
         react.useEffect(function () {
           if (open && root && !tree[root]) loadDir(root);
         }, [open, root, tree]);
+
+        // 打开时每 30s 自动刷新(root + 已展开目录)
+        react.useEffect(function () {
+          if (!open) return;
+          var id = window.setInterval(function () { refreshRef.current(); }, 30000);
+          return function () { window.clearInterval(id); };
+        }, [open]);
 
         react.useEffect(function () {
           if (!menu) return;
@@ -162,13 +189,6 @@ window.__ModuleLoader__.load({
             delete ne[path];
             setExpanded(ne);
           }
-        }
-
-        function refresh() {
-          if (!root) return;
-          var paths = [root];
-          for (var k in expanded) if (Object.prototype.hasOwnProperty.call(expanded, k)) paths.push(k);
-          for (var i = 0; i < paths.length; i++) loadDir(paths[i]);
         }
 
         function copyPath(path) {
@@ -282,7 +302,7 @@ window.__ModuleLoader__.load({
         }
 
         return react.createElement(react.Fragment, null,
-          react.createElement('button', { className: 'ftp-fab' + (open ? ' active' : ''), title: '文件浏览器', onClick: function () { setOpen(!open); } }, '📁'),
+          react.createElement('button', { className: 'ftp-fab' + (open ? ' active panel-open' : ''), title: '文件浏览器', onClick: function () { setOpen(!open); refresh(); } }, '📁'),
           react.createElement('div', { className: 'ftp-panel' + (open ? ' open' : '') },
             react.createElement('div', { className: 'ftp-head' },
               react.createElement('span', { className: 'ftp-title' }, '文件浏览器'),

@@ -22,7 +22,7 @@ window.__ModuleLoader__.load({
 .dsc-bubble{box-sizing:border-box;background:rgba(59,130,246,.78);background:color-mix(in srgb,#3b82f6 78%,transparent);-webkit-backdrop-filter:blur(10px) saturate(1.4);backdrop-filter:blur(10px) saturate(1.4);border:1px solid rgba(255,255,255,.30);border-radius:999px;padding:0 7px;font-size:10px;font-weight:600;line-height:16px;font-variant-numeric:tabular-nums;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.25);box-shadow:0 2px 6px rgba(37,99,235,.25);animation:dscBubbleIn .18s ease-out}
 .dsc-bubble.leave{opacity:0;transition:opacity .4s}
 @keyframes dscBubbleIn{from{opacity:0;transform:translateX(6px)}to{opacity:1;transform:translateX(0)}}
-.dsc-card{position:absolute;top:calc(100% + 6px);right:0;z-index:1200;box-sizing:border-box;width:288px;background:var(--dsw-alias-bg-overlay);border:1px solid var(--dsw-alias-border-l1);border-radius:12px;box-shadow:0 10px 32px rgba(0,0,0,.22);padding:10px 12px;color:var(--dsw-alias-label-primary);font-family:Inter,var(--dsw-font-family)}
+.dsc-card{position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);z-index:1200;box-sizing:border-box;width:288px;background:var(--dsw-alias-bg-overlay);border:1px solid var(--dsw-alias-border-l1);border-radius:12px;box-shadow:0 10px 32px rgba(0,0,0,.22);padding:10px 12px;color:var(--dsw-alias-label-primary);font-family:Inter,var(--dsw-font-family)}
 .dsc-head{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--dsw-alias-label-secondary);margin-bottom:6px}
 .dsc-titleGroup{display:flex;align-items:center;gap:6px;min-width:0}
 .dsc-total{font-size:20px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.2}
@@ -64,6 +64,13 @@ window.__ModuleLoader__.load({
 .dsc-priceTable th{color:var(--dsw-alias-label-caption);font-weight:500}
 .dsc-priceTable td{color:var(--dsw-alias-label-secondary)}
 .dsc-priceTable td.model{color:var(--dsw-alias-label-primary);font-family:var(--dsh-font-mono,monospace)}
+.dsc-statsHead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+.dsc-statsTitle{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.dsc-statsPieWrap{display:flex;align-items:center;gap:12px;margin-top:6px}
+.dsc-statsLegend{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:11px}
+.dsc-statsRow{display:flex;align-items:center;gap:6px;color:var(--dsw-alias-label-secondary)}
+.dsc-statsModel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dsc-statsNum{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary)}
 `;
 
     var CSS_ID = "dsh-cost-panel/styles";
@@ -97,6 +104,24 @@ window.__ModuleLoader__.load({
       return ({ old: '旧价(8/17前)', peak: '高峰价', off: '空闲价' }[label] || label || '');
     }
 
+    // 模型配色:已知模型固定色,未知模型用调色板散列
+    var MODEL_COLORS = {
+      'gpt-5.6-sol': '#2563eb',
+      'gpt-5.6-terra': '#7c3aed',
+      'gpt-5.5': '#0891b2',
+      'gpt-5.4-mini': '#059669',
+      'gpt-5.4': '#d97706',
+      'deepseek-v4-flash': '#dc2626',
+      'deepseek-v4-pro': '#db2777',
+    };
+    var PALETTE = ['#3b82f6', '#22c55e', '#a78bfa', '#f59e0b', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#14b8a6', '#8b5cf6'];
+    function colorOf(model) {
+      if (MODEL_COLORS[model]) return MODEL_COLORS[model];
+      var h = 0;
+      for (var i = 0; i < model.length; i++) h = (h * 31 + model.charCodeAt(i)) >>> 0;
+      return PALETTE[h % PALETTE.length];
+    }
+
     function Donut(props) {
       var input = props.input, output = props.output, cache = props.cache, size = props.size;
       var total = input + output + cache;
@@ -122,6 +147,83 @@ window.__ModuleLoader__.load({
         react.createElement('g', { transform: 'rotate(-90 21 21)' }, circles));
     }
 
+    // 柱状图:mode='hours' 按小时(今日),mode='days' 按天(本月);堆叠,每模型一色,单位人民币
+    function BarChart(props) {
+      var mode = props.mode;
+      var data = props.data || {};
+      var W = 460, H = 150, ML = 36, MR = 8, MT = 10, MB = 18;
+      var slots = [];
+      if (mode === 'hours') {
+        for (var h = 0; h < 24; h++) {
+          var hk = String(h).padStart(2, '0');
+          slots.push({ key: hk, label: h + ':00', buckets: (data.byHour && data.byHour[hk]) || {} });
+        }
+      } else {
+        var now = new Date();
+        var dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        for (var d = 1; d <= dim; d++) {
+          var dk = String(d);
+          slots.push({ key: dk, label: String(d), buckets: (data.byDay && data.byDay[dk]) || {} });
+        }
+      }
+      var max = 0;
+      for (var i = 0; i < slots.length; i++) {
+        var sum = 0;
+        for (var mk in slots[i].buckets) sum += slots[i].buckets[mk];
+        if (sum > max) max = sum;
+      }
+      if (max <= 0) return react.createElement('div', { className: 'dsc-empty' }, mode === 'hours' ? '今日暂无调用' : '本月暂无调用');
+      var bw = (W - ML - MR) / slots.length;
+      var bars = slots.map(function (s, idx) {
+        var x = ML + idx * bw;
+        var acc = 0;
+        var rects = Object.keys(s.buckets).filter(function (m) { return m; }).map(function (m) {
+          var v = s.buckets[m];
+          var bh = (v / max) * (H - MT - MB);
+          var r = react.createElement('rect', { key: m, x: x + 1, y: H - MB - acc - bh, width: Math.max(bw - 2, 1), height: Math.max(bh, 0), fill: colorOf(m) });
+          acc += bh;
+          return r;
+        });
+        var showTick = mode === 'hours' ? (idx % 4 === 0) : (slots.length > 16 ? idx % 2 === 0 : true);
+        return react.createElement('g', { key: s.key },
+          rects,
+          showTick ? react.createElement('text', { x: x + bw / 2, y: H - 4, fontSize: 8, fill: 'var(--dsw-alias-label-tertiary)', textAnchor: 'middle' }, s.label) : null);
+      });
+      return react.createElement('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', style: { display: 'block', marginTop: 4 } },
+        react.createElement('line', { x1: ML, y1: H - MB, x2: W - MR, y2: H - MB, stroke: 'var(--dsw-alias-border-l1)' }),
+        react.createElement('text', { x: W - MR, y: MT + 6, fontSize: 9, fill: 'var(--dsw-alias-label-tertiary)', textAnchor: 'end' }, '¥' + fmtRate(max)),
+        bars);
+    }
+
+    // 饼图:各模型花费占比(人民币)
+    function ModelPie(props) {
+      var byModel = props.byModel || {};
+      var total = props.total || 0;
+      var keys = Object.keys(byModel).filter(function (m) { return m && byModel[m].cost > 0; });
+      if (keys.length === 0 || total <= 0) return react.createElement('div', { className: 'dsc-empty' }, '暂无数据');
+      var R = 15.9155;
+      var C = 2 * Math.PI * R;
+      var offset = 0;
+      var segs = keys.map(function (m) {
+        var len = (byModel[m].cost / total) * C;
+        var seg = react.createElement('circle', { key: m, cx: 21, cy: 21, r: R, fill: 'transparent', stroke: colorOf(m), strokeWidth: 6, strokeDasharray: len + ' ' + (C - len), strokeDashoffset: -offset });
+        offset += len;
+        return seg;
+      });
+      var legend = keys.map(function (m) {
+        var pct = (byModel[m].cost / total) * 100;
+        return react.createElement('div', { key: m, className: 'dsc-statsRow' },
+          react.createElement('span', { className: 'dsc-dot', style: { background: colorOf(m) } }),
+          react.createElement('span', { className: 'dsc-statsModel' }, m),
+          react.createElement('span', { className: 'dsc-statsNum' }, fmtYuan(byModel[m].cost) + ' · ' + pct.toFixed(1) + '%'));
+      });
+      return react.createElement('div', { className: 'dsc-statsPieWrap' },
+        react.createElement('svg', { viewBox: '0 0 42 42', style: { width: 116, height: 116, flex: 'none' } },
+          react.createElement('circle', { cx: 21, cy: 21, r: R, fill: 'transparent', stroke: 'var(--dsw-alias-border-l1)', strokeWidth: 6 }),
+          react.createElement('g', { transform: 'rotate(-90 21 21)' }, segs)),
+        react.createElement('div', { className: 'dsc-statsLegend' }, legend));
+    }
+
     function CostChip(props) {
       var proj = props.useProjection('costSnapshot');
       var t = (proj && proj.totals) || { calls: 0, inputTokens: 0, outputTokens: 0, cacheTokens: 0, relayCostCredit: 0, relayCostRmb: 0, legacyCostRmb: 0, totalCostRmb: 0 };
@@ -137,6 +239,8 @@ window.__ModuleLoader__.load({
       var showHistory = historyState[0], setShowHistory = historyState[1];
       var tabState = react.useState('calls');
       var tab = tabState[0], setTab = tabState[1];
+      var periodState = react.useState('today');
+      var period = periodState[0], setPeriod = periodState[1];
       var bubblesState = react.useState([]);
       var bubbles = bubblesState[0], setBubbles = bubblesState[1];
       var lastSeq = react.useRef(0);
@@ -239,6 +343,25 @@ window.__ModuleLoader__.load({
           legacySecs);
       };
 
+      var renderStats = function () {
+        if (!proj || !proj.statsToday) return react.createElement('div', { className: 'dsc-empty' }, '统计加载中…(需重启 dsh web 后生效)');
+        var label = proj.statsLabel || { today: '', month: '' };
+        var data = period === 'today'
+          ? (proj.statsToday || { total: 0, calls: 0, byHour: {}, byModel: {} })
+          : (proj.statsMonth || { total: 0, calls: 0, byDay: {}, byModel: {} });
+        var title = period === 'today' ? '今日 (' + label.today + ')' : '本月 (' + label.month + ')';
+        return react.createElement('div', null,
+          react.createElement('div', { className: 'dsc-statsHead' },
+            react.createElement('div', { className: 'dsc-tabs' },
+              react.createElement('button', { className: 'dsc-tab' + (period === 'today' ? ' active' : ''), onClick: function () { setPeriod('today'); } }, '今日'),
+              react.createElement('button', { className: 'dsc-tab' + (period === 'month' ? ' active' : ''), onClick: function () { setPeriod('month'); } }, '本月')),
+            react.createElement('span', { className: 'dsc-statsTitle' }, title + ' · 总花费 ' + fmtYuan(data.total) + ' · ' + data.calls + ' 次调用')),
+          react.createElement('div', { className: 'dsc-priceSecTitle' }, period === 'today' ? '按小时花费(堆叠按模型,人民币)' : '按天花费(堆叠按模型,人民币)'),
+          react.createElement(BarChart, { mode: period === 'today' ? 'hours' : 'days', data: data }),
+          react.createElement('div', { className: 'dsc-priceSecTitle' }, '各模型花费占比(人民币)'),
+          react.createElement(ModelPie, { byModel: data.byModel, total: data.total }));
+      };
+
       return react.createElement('div', { className: 'dsc-wrap', onMouseEnter: function () { cancelClose(); setOpen(true); }, onMouseLeave: scheduleClose },
         react.createElement('div', { className: 'dsc-chip', title: 'DeepSeek 计费 · 悬停查看详情' },
           react.createElement('span', null, fmtYuan(t.totalCostRmb))),
@@ -267,7 +390,8 @@ window.__ModuleLoader__.load({
             react.createElement('div', { className: 'dsc-panelHead' },
               react.createElement('div', { className: 'dsc-tabs' },
                 react.createElement('button', { className: 'dsc-tab' + (tab === 'calls' ? ' active' : ''), onClick: function () { setTab('calls'); } }, '历史调用' + (tab === 'calls' ? ' (' + history.length + ')' : '')),
-                react.createElement('button', { className: 'dsc-tab' + (tab === 'prices' ? ' active' : ''), onClick: function () { setTab('prices'); } }, '定价表')),
+                react.createElement('button', { className: 'dsc-tab' + (tab === 'prices' ? ' active' : ''), onClick: function () { setTab('prices'); } }, '定价表'),
+                react.createElement('button', { className: 'dsc-tab' + (tab === 'stats' ? ' active' : ''), onClick: function () { setTab('stats'); } }, '用量统计')),
               react.createElement('button', { className: 'dsc-close', onClick: function () { setShowHistory(false); } }, '✕')),
             tab === 'calls'
               ? (history.length === 0
@@ -291,7 +415,7 @@ window.__ModuleLoader__.load({
                         react.createElement('div', { className: 'dsc-callCost' }, '= ' + fmtYuan(c.totalCostRmb)))),
                     react.createElement('div', { className: 'dsc-callRate' }, '缓存命中率 ' + (c.cacheHitRate !== null && c.cacheHitRate !== undefined ? c.cacheHitRate.toFixed(1) + '%' : '—')));
                 }))
-              : renderPrices(),
+              : (tab === 'prices' ? renderPrices() : renderStats()),
           ),
         ),
       );

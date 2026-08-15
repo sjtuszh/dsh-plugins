@@ -5,17 +5,21 @@
 
 ## 功能
 
-- 页面**右侧中间**浮动 📁 小按钮 → 点击滑出右侧文件栏（`shell.overlay` 根级浮动层）
+- 页面**右侧中间**浮动 📁 小按钮 → 点击滑出右侧文件栏（`shell.overlay` 根级浮动层）；打开时按钮**贴面板左缘**移动
+- 面板**实底**（`--dsw-alias-bg-layer-1`），行悬停用 `layer-2`（深色主题下更亮，不显黑）
 - 文件栏以**当前会话 cwd** 为根，目录懒加载、可展开/折叠，带刷新按钮
+- 刷新策略：**每次点击 📁 按钮刷新** + 面板打开时**每 30s 自动刷新**（root + 已展开目录）
 - 每个文件/文件夹行右侧 **⋯** → 菜单：
   - **复制文件地址**（浏览器剪贴板，失败回退 `execCommand`）
-  - **打开文件浏览器查看**（文件 → 资源管理器 `/select,` 定位；文件夹 → 直接打开）
+  - **打开文件浏览器查看**（经 `shell`/PowerShell 传参调用 `explorer /select,`，文件正确定位、文件夹直接打开）
+
+> 实时同步说明：动态/静态插件都只有 client→host 请求通道、无服务端推送，所以"实时同步不占资源"目前没有现成方案，采用 30s 轮询 + 点击刷新的回退方案（与动态版一致）。
 
 ## 架构差异（相对动态版）
 
 | 维度 | 动态版 | 静态版 |
 |---|---|---|
-| 数据通道 | Host `harness.handle` RPC + 客户端轮询 | **Typert remote**：Host 提供 `filetree` Cordis 服务，typert 清单注册 `filetree/list`、`filetree/reveal` 端点，客户端 `ctx.remote.filetree.*` 调用 |
+| 数据通道 | Host `harness.handle` RPC + 客户端轮询 | **Typert remote**：Host 服务继承 `TypertRemoteService`（构造即注册 + 打 `typertRemote` 绑定，**普通 `ctx.provide` 会被网关拒收**，见 MEMORY §11.4b），typert 清单注册 `filetree/list`、`filetree/reveal` 端点，客户端 `ctx.remote.filetree.*` 调用 |
 | 挂载 | 单包，一行 | **双包**（MEMORY §5.2 双条目方案）：`dsh-file-panel`（UI，消费 `remote.filetree`）+ `dsh-file-panel-mount`（仅 `$mount` 描述符，防 §4.3 自依赖死锁） |
 | 安装 | cordis_define + 批准 | 复制包 + patch 行 + 重启 |
 
@@ -27,7 +31,7 @@ file-panel-static/
 ├── dsh-file-panel/              # 主包（UI + Host 服务 + typert 清单）
 │   ├── package.json
 │   └── lib/
-│       ├── host.js              # ctx.provide('filetree', …)（无条件提供，§5.3）
+│       ├── host.js              # FileTreeService extends TypertRemoteService（注册 + 绑定）
 │       ├── typert.host.js       # TYPERT 清单（zod v4 真 schema）
 │       ├── typert.remote-client.js  # TYPERT_REMOTE 描述符（恒等桩，仅供文档参考）
 │       └── client.js            # UI bundle（ModuleLoader 工厂，inject slots/remote/remote.filetree）

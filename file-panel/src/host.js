@@ -1,12 +1,16 @@
 // ============================================================================
-// 文件树浏览面板 — Host 半边(动态版)
+// 文件树浏览面板 — Host 半边(动态版 v3)
 // ----------------------------------------------------------------------------
 // 用法:作为 cordis_define 的 code.host 传入(函数体,返回 Cordis Plugin)。
 //
 // 职责:
 //  1. filetree:list   — 列目录(fs.resolve/stat/listDir/processPath,条目自带 type);
-//  2. filetree:reveal — 在系统文件管理器中打开/定位(subprocess spawn explorer.exe,
-//                       文件用 /select, 定位,目录直接打开)。
+//  2. filetree:reveal — 在系统文件管理器中打开/定位。
+//
+// v3 reveal 方案(关键):命令写入临时 .cmd 文件(fs.writeText 不经 argv 序列化),
+// 再 cmd /c 执行 —— 绕开 Node spawn 把参数内嵌引号转义为 \" 的问题
+// (subprocess 未开 windowsVerbatimArguments;dsh-pwsh-local 把命令作为单个
+// -Command argv 元素传、同样被转义),explorer /select,"path" 由此正确定位。
 //
 // 只依赖 fs / subprocess 两个可选服务,均判 undefined。
 // ============================================================================
@@ -51,17 +55,20 @@ return {
       const path = args && typeof args.path === 'string' ? args.path : '';
       const kind = args && args.kind === 'dir' ? 'dir' : 'file';
       if (!path) return { ok: false, error: '缺少路径' };
+      const fs = ctx.get('fs');
       const subprocess = ctx.get('subprocess');
-      if (subprocess === undefined) return { ok: false, error: '子进程服务不可用' };
+      if (fs === undefined || subprocess === undefined) return { ok: false, error: '系统服务不可用' };
       try {
-        const exe = await subprocess.resolveExecutable('explorer.exe');
-        const sep = path.indexOf('\\') !== -1 ? '\\' : '/';
-        const idx = path.lastIndexOf(sep);
-        const parent = idx > 0 ? path.slice(0, idx) : (path.indexOf('\\') !== -1 ? 'C:\\' : '/');
-        const arg = kind === 'dir' ? '"' + path + '"' : '/select,"' + path + '"';
+        const scriptPath = 'C:\\Users\\22320\\.dsh\\dsh-reveal.cmd';
+        const line = kind === 'dir'
+          ? 'explorer.exe "' + path + '"'
+          : 'explorer.exe "/select,' + path + '"';
+        const target = await fs.resolve(scriptPath);
+        await fs.writeText(target, '@echo off\r\nchcp 65001 >nul\r\n' + line + '\r\n');
+        const cmd = await subprocess.resolveExecutable('cmd.exe');
         subprocess.spawn({
-          argv: [exe, arg],
-          cwd: parent,
+          argv: [cmd, '/c', scriptPath],
+          cwd: 'C:\\Users\\22320\\.dsh',
           stdio: { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' },
           graceMs: 5000,
         });
