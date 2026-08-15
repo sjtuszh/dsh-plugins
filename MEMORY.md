@@ -1,0 +1,259 @@
+# dsh-plugins 开发记忆（MEMORY）
+
+> **每次开发任何 DSH 插件前先读这份记忆。** 它是本仓库两个插件（计费面板、文件浏览器）从动态版到静态化、再退回动态版的完整实战记录，里面的坑每一个都是真实踩过的。
+>
+> 状态：2026-08 中旬 · 当前两个插件以「动态插件」方式使用中；静态化代码在本仓库保留全历史。
+
+---
+
+## 0. 一句话架构
+
+**DSH = DeepSeek 的开源 Agent 运行时，"一切皆插件"，底层是 Cordis。** 每个能力都是 `cordis.yml` 里的一行插件；模型适配、工具、会话日志、agent loop 全是插件，可替换可 patch。Web 界面 = `dsh web`（profile = `dsh-base` + `dsh-web-app` 两个 bundle 叠出来的插件树）。
+
+- 数据目录：`$DSH_HOME`（默认 `~/.dsh`），profile 在 `$DSH_HOME/profiles/<name>`
+- 会话日志：`$DSH_HOME/sessions/<编码后的工作区目录>/<session-id>/session.jsonl.zstd`（zstd 多帧压缩，`node:zlib` 的 `zstdDecompressSync` 可逐帧解压）
+- 本机示例：`$DSH_HOME\profiles\web`（web profile），插件源码习惯放 `profiles\web\plugins\<pkg>\`
+
+---
+
+## 1. 动态插件 vs 静态插件 —— 第一选择
+
+| 维度 | 动态插件（cordis_define/run） | 静态插件（profile patch 挂载） |
+|---|---|---|
+| 生命周期 | **只在当前进程内存，重启即全部消失**（所有会话的一起没） | 随 profile 启动自动加载，重启不丢 |
+| 安装 | `cordis_define` + `cordis_run`（客户端半边要用户批准） | 写包 + `cordis.patch.yml` 的 `insert:` 行 + 重启 dsh |
+| 代码格式 | 普通 JS 函数体，`return { apply(ctx) {...} }`；可用 `harness`/`host.call`/`styles.insert`/`React` 内置 | 包结构 + 浏览器 bundle 必须是 `__ModuleLoader__` 工厂格式（见 §3） |
+| 适合 | 快速原型、临时工具、**已验证的最终形态** | 需要长期存在的正式插件 |
+| 授权记忆 | 批准标记在 Host 内存（单勾=当前版本，双勾=未来版本），进程重启即失 | 无需批准 |
+
+**结论**：本仓库两个插件最终选了动态版（用户偏好），代价是重启要重定义+批准。静态化代码在 git 历史里（见 §4-§6 的坑，都是为静态化铺的路）。
+
+---
+
+## 2. 动态插件开发要点
+
+- Host 半边：
+  - `harness.handle('name', async (args) => ...)` 注册客户端可调 RPC
+  - `harness.defineTool` / `harness.registerTool` 注册模型工具（**Host-only 工具免批准**，是调试 Host 状态的好办法：注册个 probe 工具读任何服务）
+  - `ctx.get('fs'|'sessions'|'sessionProjections'|...)` 取服务，**必须判 undefined**
+- Client 半边：
+  - `host.call('name', args)` 调 Host RPC；`styles.insert(css)` 注入样式；`React` 全局可用（无 JSX）
+  - 槽位注册：`ctx.get('slots')` → `slots.inject('槽位名', () => slots.register({name, id, order}, (props) => ...))`
+  - **组件里用 `ctx` 必须通过闭包**：组件函数定义在 `apply(ctx)` 内部（或把 ctx 当 prop 传）。模块顶层没有 ctx → `ctx is not defined` 崩溃（真实踩过，见 §7）
+  - 常用槽位：`conversation.session.header.actions`（头部操作行，标准 props 带 sessionId/useProjection/useSessions）、`shell.overlay`（页面级浮层，props 只有 useSessions/useWorkspaces）
+- 调试手段：
+  - Host-only probe 插件（注册工具读服务状态）——进程内任何服务都能读
+  - 会话日志解压后全文可搜（工具调用、事件都在里面）
+
+---
+
+## 3. 静态插件（profile 挂载）完整套路
+
+### 3.1 patch 语法（关键坑）
+
+`cordis.patch.yml` 是**顶层 patch 条目列表**，两种语义：
+
+```yaml
+# ✅ 新增行：用 insert: 包一层
+- insert:
+    - id: cost-panel
+      name: dsh-cost-panel
+
+# ❌ 这样写是"按 id 改已有行"：行不存在会报 entry not found 被跳过
+- id: cost-panel
+  name: dsh-cost-panel
+```
+
+### 3.2 包结构（静态插件标准）
+
+```
+<包名>/
+  package.json      # exports: "."=host main, "./client", "./typert", "./remote"
+  lib/host.js       # Host 半边（ESM，可 import）
+  lib/client.js     # 浏览器 bundle（工厂格式，不能 import）
+  lib/typert.host.js        # TYPERT 清单（真 zod schema）
+  lib/typert.remote-client.js # TYPERT_REMOTE 客户端描述符
+```
+
+package.json 关键字段：
+
+```json
+{
+  "type": "module",
+  "main": "lib/host.js",
+  "exports": {
+    ".": "./lib/host.js",
+    "./typert": "./lib/typert.host.js",
+    "./remote": "./lib/typert.remote-client.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": { "client": { "platform": "web" } }
+}
+```
+
+### 3.3 浏览器 bundle 格式（客户端半边）
+
+```js
+window.__ModuleLoader__.load({
+  id: "包名",                    // 必须等于包名（图里行 id）
+  factory: (require) => {
+    var module = { exports: {} };
+    var exports = module.exports;
+    Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+    var react = require("react");     // 只能 require 模块表里的平台模块（react、react-dom、已注册 bundle id）
+    var inject = [];                  // 主插件依赖（见 §5 守卫坑）
+    // CSS 直接插 DOM（没有 styles.insert）：
+    // document.createElement("style") + data-plugin-css 防重
+    function apply(ctx) { ... }       // 组件定义在 apply 内部以闭包捕获 ctx
+    exports.apply = apply;
+    exports.inject = inject;
+    return module.exports;
+  }
+});
+```
+
+### 3.4 安装与生效
+
+- profile 用 `nodeLinker: hoisted`：**手动把包目录复制进 `profiles/<name>/node_modules/` 即可**（无需 pnpm；zod 等依赖同样手动复制）
+- `client.js` 改动：dsh 进程按文件哈希生成 rev 分发 → **刷新浏览器即可**（rev 变了会重新拉取）
+- `host.js` / patch / typert 改动：**必须重启 dsh web**（web profile 的 HMR 是 disabled，不会热生效）
+
+---
+
+## 4. Cordis 框架特性（含三个大坑）
+
+### 4.1 服务与 inject
+
+- 服务按 key 提供：`ctx.provide('name', obj)`；取用 `ctx.get('name')`（可选，判 undefined）或 `inject: ['name']`（硬依赖，Cordis 等就绪才激活）
+- 事件：`ctx.on('event', fn)`（返回 disposer）；`ctx.effect(fn)` 注册可逆副作用
+- `ctx.timeout` / `ctx.interval` 需要 `inject: ['timer']`
+
+### 4.2 坑①：客户端对象守卫（without inject）
+
+**静态客户端的 ctx 是个代理，访问任何未声明的属性（含嵌套路径）都会抛 `cannot get property "remote.costPanel" without inject`。**
+
+```js
+// ❌ inject 只声明了 ["timer","remote"]，访问 ctx.remote.costPanel 会崩
+// ✅ 必须在 inject 里声明点号路径：["timer","remote","remote.costPanel"]
+```
+
+### 4.3 坑②：自依赖死锁（pending waiting for service）
+
+**不要 inject 自己 apply 里才挂出来的服务。** 例如 `ctx.remote.$mount(TYPERT_REMOTE)` 会创建名为 `remote.costPanel` 的服务——如果插件自己的 inject 声明了它，就是"等一个只有自己激活后才存在的东西"→ 插件永远 pending，UI 全无。
+
+```js
+// ❌ 死锁：inject 声明 remote.costPanel，但它是本插件 apply 里 $mount 出来的
+// ✅ 解法：拆两个条目（见 §5 双条目方案）
+```
+
+### 4.4 坑③：ctx 作用域
+
+组件函数定义在模块顶层时拿不到 `ctx`（apply 的参数不在作用域）。**组件必须定义在 apply 内部**（闭包捕获），或显式把 ctx 当 prop 传。
+
+---
+
+## 5. Typert 远程（静态版 Host↔Client RPC）+ 双条目方案
+
+### 5.1 机制
+
+- Host：`ctx.provide('explorer', { async list(path){...} })` 提供 Cordis 服务
+- `lib/typert.host.js` 导出 `TYPERT` 清单（package/face:'host'/schemas/invocations/model），**typert-loader 自动加载**（只要包有 `exports["./typert"]`），gateway 自动认领 `<namespace>/<method>` 端点
+- 客户端：`ctx.remote.$mount(TYPERT_REMOTE)` 挂载描述符（`TYPERT_REMOTE` 在 `lib/typert.remote-client.js`），之后 `ctx.remote.<ns>.<method>()` 可调
+- **客户端描述符的 schema 可以用恒等桩** `{ parse: (v) => v }`（客户端不校验，服务端用真 zod）
+
+### 5.2 双条目方案（绕开守卫+死锁的正式解法）
+
+**"同一个 client 插件既挂 remote 又消费 remote"在静态框架里是无解的**（守卫要声明、声明就死锁）。必须拆：
+
+- **A. mount 条目**：`inject: ["remote"]`，只 `ctx.remote.$mount(...)`，不渲染 UI
+- **B. UI 条目**：`inject: ["timer","remote","remote.costPanel"]`，渲染 UI 并消费——Cordis 等 A 挂出服务后才激活 B，顺序由依赖保证
+
+曾尝试"同一 bundle 内 `ctx.plugin()` 拆双子插件"（A/B 各一个子插件）——理论可行但**实测未通过**（未确认子插件 inject 解析与顶层条目是否一致）。**要静态化就用字面意义的双包/双 patch 行。**
+
+### 5.3 服务提供原则
+
+**Host 服务必须无条件提供，不能因依赖服务暂缺而早退**：
+
+```js
+// ❌ fs 在 apply 早期可能未就绪（没声明 inject 时插件激活很早），直接 return 会丢服务
+const fs = ctx.get('fs'); if (fs === undefined) return;
+// ✅ 无条件 provide，方法内部再惰性 ctx.get('fs')
+ctx.provide('explorer', { async list(path) { const fs = ctx.get('fs'); ... } });
+```
+
+（真实案例：file-browser 因 `if (fs === undefined) return` 导致 `explorer` 服务缺失，typert 端点在但服务不在 → 客户端调用全挂。）
+
+---
+
+## 6. 会话 / 投影 / 分叉
+
+### 6.1 会话日志与 header
+
+- 日志：zstd 多帧 JSONL，每事件一行；`{type, seq, time, data}`
+- **会话 header（持久化，随日志第一帧）**：`{version, id, createdAt, cwd, parentSession?, seedLength?, ...}`
+  - `parentSession` + `seedLength` **只在真分叉时写入** → 分叉的唯一可靠判据
+- **`session/end-seed` 标记：分叉和重启恢复都会追加！**（真实会话里有 124 个）——**绝不能**用它判断分叉
+
+### 6.2 投影（sessionProjections）
+
+- `ctx.sessionProjections.register({ key, schema, init, apply(state, event), view, stateVersion })`
+- 纯折叠，客户端 `useProjection(key)` 读（槽位 props 提供）；带持久化检查点（`$DSH_HOME/storages/session_projcache.json`）
+- **投影 apply 是纯函数，看不到 session header** → 依赖 header 的逻辑（分叉归零）不能放投影里
+- 客户端投影交付有**基线时序坑**：列表基线/历史尾页可能缺新注册的键（costSnapshot 曾因基线缺失显示 0，等新事件帧才补上）
+
+### 6.3 分叉归零（计费）的正确实现
+
+```js
+// 首次接触会话时读 header.seedLength 定基线，只折叠基线之后的事件
+if (s.baseline === null) {
+  s.baseline = (session.header.seedLength || 0);
+  if (s.foldedSeq < s.baseline) s.foldedSeq = s.baseline;
+}
+```
+- 分叉会话：基线=seedLength → 只计分叉后的事件
+- 原会话（含多次重启）：基线=0 → 跨重启计全量（重启恢复追加的 end-seed 标记**不**重置）
+
+---
+
+## 7. UI / 层叠实战坑
+
+- **列内 absolute 定位的悬浮卡片会被侧边栏/详情栏压住**（列有 overflow:hidden + 层叠上下文）。解法：
+  - `position: fixed` + 超高 z-index（`2147483000`），用 `getBoundingClientRect()` 实测锚点元素位置贴附
+  - 或注册进 `shell.overlay`（页面级浮层，天然最顶）
+- 动态版浮动面板用 `shell.overlay` 没问题；静态版头部卡片用"fixed + 实测位置 + 200ms 悬停宽限期"（胶囊→卡片鼠标路径不抖）
+- 弹窗用 `position: fixed; inset: 0` 全屏遮罩，`onClick` 关闭 + `stopPropagation` 防误关
+
+---
+
+## 8. DeepSeek API 计费/缓存知识（计费插件依赖）
+
+- **三桶计费**（每百万 tokens）：缓存命中输入（最便宜）/ 缓存未命中输入（全价）/ 输出
+- **峰谷定价**（2026-08-17 00:00 北京时间生效）：高峰 9:00–12:00、14:00–18:00（北京），空闲减半。
+  - flash：高峰 0.10/3.0/9.0 元，空闲 0.05/1.5/4.5；pro：高峰 0.30/9.0/27.0，空闲 0.15/4.5/13.5
+  - 此前旧价：flash 0.02/1.0/2.0，pro 0.025/3.0/6.0
+- **缓存命中率** = cacheRead ÷ (uncached + cacheRead + cacheWrite) × 100%
+- usage 数据在 `assistant/message` 会话事件的 `data.usage`；模型名在 `data.message.source.model`；每条调用按**它发生时刻**的价格计费
+- DeepSeek 上下文硬盘缓存：服务端 KV 前缀缓存，**按请求前缀完整匹配**，跨会话基本不命中；几小时~几天自动清空；"尽力而为"
+
+---
+
+## 9. 环境/工具备忘
+
+- 会话日志解压（node）：
+  ```js
+  const { zstdDecompressSync } = require('node:zlib');
+  // 日志是多帧 zstd：循环找 magic 0x28b52ffd 逐帧解压拼文本
+  ```
+- 读 Host 运行时状态：定义 Host-only probe 插件（harness.registerTool，免批准）直接读 `ctx.get(...)` 任意服务
+- PowerShell 5.1 读 UTF-8 文件会乱码（GBK 显示）——验证文件内容用 node，别用 Get-Content 直接比对中文
+- profile `nodeLinker: hoisted` → 手动复制即可装包；`dsh plugin --profile <name>` 需要 pnpm（本机未装）
+- git 仓库：`C:\Users\22320\Desktop\dsh_WS\dsh-plugins`（本仓库），本地无远端
+
+---
+
+## 10. 决策备忘
+
+- 本仓库两个插件：**当前以动态版使用**（计费 dshc-1 / 文件浏览器 expl-2），源码在会话日志里可随时恢复
+- **下次静态化前必读**：§3（包/格式）、§4（守卫/死锁/ctx）、§5（双条目）、§6（分叉/投影）
+- 静态化建议路径：先只固化文件浏览器（双包分离）验证跑通，再动计费
