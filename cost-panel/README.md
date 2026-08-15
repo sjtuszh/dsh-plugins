@@ -22,7 +22,7 @@
 2. 调用 `cordis_run` 激活(Client 半边首次需要用户在界面批准)。
 3. 会话头部出现费用胶囊即成功;悬停/点击可查看明细。
 
-> 动态插件定义于当前进程,DSH 重启后需重新定义。如需长期挂载,参考 [`MEMORY.md`](../MEMORY.md) 的静态化(profile 挂载)方案。
+> 动态插件定义于当前进程,DSH 重启后需重新定义。如需长期挂载,仓库已提供现成静态版 [`../cost-panel-static/`](../cost-panel-static/README.md)(profile 挂载、随启动自动加载、免批准)。
 
 ## ⚙️ 配置
 
