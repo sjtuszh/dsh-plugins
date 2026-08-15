@@ -71,6 +71,9 @@ window.__ModuleLoader__.load({
 .dsc-statsRow{display:flex;align-items:center;gap:6px;color:var(--dsw-alias-label-secondary)}
 .dsc-statsModel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsc-statsNum{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary)}
+.dsc-panelTitle{font-size:13px;font-weight:600}
+.dsc-btnRow{display:flex;gap:6px;margin-top:8px}
+.dsc-btnRow .dsc-btn{margin-top:0}
 `;
 
     var CSS_ID = "dsh-cost-panel/styles";
@@ -104,15 +107,15 @@ window.__ModuleLoader__.load({
       return ({ old: '旧价(8/17前)', peak: '高峰价', off: '空闲价' }[label] || label || '');
     }
 
-    // 模型配色:已知模型固定色,未知模型用调色板散列
+    // 模型配色:DeepSeek 官方模型用蓝色,Relay/GPT 用其他色系
     var MODEL_COLORS = {
-      'gpt-5.6-sol': '#2563eb',
-      'gpt-5.6-terra': '#7c3aed',
-      'gpt-5.5': '#0891b2',
-      'gpt-5.4-mini': '#059669',
-      'gpt-5.4': '#d97706',
-      'deepseek-v4-flash': '#dc2626',
-      'deepseek-v4-pro': '#db2777',
+      'deepseek-v4-flash': '#3b82f6',
+      'deepseek-v4-pro': '#1d4ed8',
+      'gpt-5.6-sol': '#7c3aed',
+      'gpt-5.6-terra': '#0891b2',
+      'gpt-5.5': '#059669',
+      'gpt-5.4-mini': '#d97706',
+      'gpt-5.4': '#dc2626',
     };
     var PALETTE = ['#3b82f6', '#22c55e', '#a78bfa', '#f59e0b', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#14b8a6', '#8b5cf6'];
     function colorOf(model) {
@@ -237,6 +240,8 @@ window.__ModuleLoader__.load({
       var open = openState[0], setOpen = openState[1];
       var historyState = react.useState(false);
       var showHistory = historyState[0], setShowHistory = historyState[1];
+      var statsState = react.useState(false);
+      var showStats = statsState[0], setShowStats = statsState[1];
       var tabState = react.useState('calls');
       var tab = tabState[0], setTab = tabState[1];
       var periodState = react.useState('today');
@@ -343,14 +348,16 @@ window.__ModuleLoader__.load({
           legacySecs);
       };
 
-      var renderStats = function () {
-        if (!proj || !proj.statsToday) return react.createElement('div', { className: 'dsc-empty' }, '统计加载中…(需重启 dsh web 后生效)');
-        var label = proj.statsLabel || { today: '', month: '' };
+      var renderGlobalStats = function () {
+        if (!proj || !proj.global) return react.createElement('div', { className: 'dsc-empty' }, '统计加载中…(需重启 dsh web 后生效)');
+        var g = proj.global;
+        var label = g.label || { today: '', month: '' };
         var data = period === 'today'
-          ? (proj.statsToday || { total: 0, calls: 0, byHour: {}, byModel: {} })
-          : (proj.statsMonth || { total: 0, calls: 0, byDay: {}, byModel: {} });
+          ? (g.statsToday || { total: 0, calls: 0, byHour: {}, byModel: {} })
+          : (g.statsMonth || { total: 0, calls: 0, byDay: {}, byModel: {} });
         var title = period === 'today' ? '今日 (' + label.today + ')' : '本月 (' + label.month + ')';
         return react.createElement('div', null,
+          react.createElement('div', { className: 'dsc-priceNote' }, '全部会话/工作区累计: ' + fmtYuan(g.totals.totalCostRmb) + ' · ' + g.totals.calls + ' 次调用(Relay 折算 ' + fmtYuan(g.totals.relayCostRmb) + ' + 官方 ' + fmtYuan(g.totals.legacyCostRmb) + ')'),
           react.createElement('div', { className: 'dsc-statsHead' },
             react.createElement('div', { className: 'dsc-tabs' },
               react.createElement('button', { className: 'dsc-tab' + (period === 'today' ? ' active' : ''), onClick: function () { setPeriod('today'); } }, '今日'),
@@ -384,14 +391,15 @@ window.__ModuleLoader__.load({
                   react.createElement('span', { className: 'dsc-num' }, fmtTok(row.v)));
               }))),
           react.createElement('div', { className: 'dsc-last' }, turn ? '本轮费用 ' + fmtYuan(turn.totalCostRmb) + ' · ' + turn.calls + ' 次调用' : '暂无调用记录'),
-          react.createElement('button', { className: 'dsc-btn', onClick: function () { setShowHistory(true); } }, '查看历史调用')),
+          react.createElement('div', { className: 'dsc-btnRow' },
+            react.createElement('button', { className: 'dsc-btn', onClick: function () { setShowHistory(true); } }, '查看历史调用'),
+            react.createElement('button', { className: 'dsc-btn', onClick: function () { setShowStats(true); } }, '总量统计'))),
         showHistory && react.createElement('div', { className: 'dsc-modal', onClick: function () { setShowHistory(false); } },
           react.createElement('div', { className: 'dsc-panel', onClick: function (e) { e.stopPropagation(); } },
             react.createElement('div', { className: 'dsc-panelHead' },
               react.createElement('div', { className: 'dsc-tabs' },
                 react.createElement('button', { className: 'dsc-tab' + (tab === 'calls' ? ' active' : ''), onClick: function () { setTab('calls'); } }, '历史调用' + (tab === 'calls' ? ' (' + history.length + ')' : '')),
-                react.createElement('button', { className: 'dsc-tab' + (tab === 'prices' ? ' active' : ''), onClick: function () { setTab('prices'); } }, '定价表'),
-                react.createElement('button', { className: 'dsc-tab' + (tab === 'stats' ? ' active' : ''), onClick: function () { setTab('stats'); } }, '用量统计')),
+                react.createElement('button', { className: 'dsc-tab' + (tab === 'prices' ? ' active' : ''), onClick: function () { setTab('prices'); } }, '定价表')),
               react.createElement('button', { className: 'dsc-close', onClick: function () { setShowHistory(false); } }, '✕')),
             tab === 'calls'
               ? (history.length === 0
@@ -415,9 +423,15 @@ window.__ModuleLoader__.load({
                         react.createElement('div', { className: 'dsc-callCost' }, '= ' + fmtYuan(c.totalCostRmb)))),
                     react.createElement('div', { className: 'dsc-callRate' }, '缓存命中率 ' + (c.cacheHitRate !== null && c.cacheHitRate !== undefined ? c.cacheHitRate.toFixed(1) + '%' : '—')));
                 }))
-              : (tab === 'prices' ? renderPrices() : renderStats()),
+              : renderPrices(),
           ),
         ),
+        showStats && react.createElement('div', { className: 'dsc-modal', onClick: function () { setShowStats(false); } },
+          react.createElement('div', { className: 'dsc-panel', onClick: function (e) { e.stopPropagation(); } },
+            react.createElement('div', { className: 'dsc-panelHead' },
+              react.createElement('span', { className: 'dsc-panelTitle' }, '总量统计 · 所有会话/工作区'),
+              react.createElement('button', { className: 'dsc-close', onClick: function () { setShowStats(false); } }, '✕')),
+            renderGlobalStats())),
       );
     }
 

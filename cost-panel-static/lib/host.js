@@ -1,19 +1,23 @@
 // ============================================================================
 // DeepSeek 双轨计费面板 — Host 半边（静态版）
 // ----------------------------------------------------------------------------
-// 通过 sessionProjections 注册 'costSnapshot' 投影:
-//   - apply 折叠 assistant/message 事件的 usage,累计三层聚合(会话/轮次/历史);
-//   - view 输出 totals / lastTurn / lastCall / history / scheme / prices;
-//   - 投影检查点自动持久化,重启后从会话日志整体重放(历史/总账全量恢复,
-//     无需独立账本文件)。
-// 客户端经槽位 props 的 useProjection('costSnapshot') 读取,无 RPC、无轮询。
+// 1) 通过 sessionProjections 注册 'costSnapshot' 投影:
+//      - apply 折叠 assistant/message 事件的 usage,累计三层聚合(会话/轮次/历史);
+//      - 注意:apply 必须返回【新引用】——投影驱动的变更通知用
+//        `!Object.is(next, cell.state)` 判定,原地修改会导致历史/总额停更;
+//      - view 输出 totals / lastTurn / lastCall / history / scheme / prices
+//        + 本会话 statsToday/statsMonth + 全局(所有会话/工作区)global 统计。
+// 2) 全局统计:监听 session/event(进程内所有会话),按北京时间累计
+//    天/小时/模型花费(人民币),启动时回放已加载会话的历史事件。
+// 3) 投影检查点自动持久化,重启后从会话日志整体重放。
 //
-// 已知差异(相对动态版):投影 apply 是纯函数、看不到 session header,
-// 分叉会话按全量计费(不再按 seedLength 归零),客户端不显示分叉徽章。
+// 已知差异(相对动态版):投影 apply 看不到 session header,
+// 分叉会话按全量计费,客户端不显示分叉徽章。
 // ============================================================================
 
 const CREDIT_TO_RMB = 0.4;
 const NEW_PRICING_MS = Date.UTC(2026, 7, 17, 0, 0, 0) - 8 * 3600e3;
+const HISTORY_CAP = 500;
 
 const RELAY_RATES = {
   'gpt-5.6-sol': { input: 5, output: 40, cacheRead: 0.5, cacheWrite: 5 },
@@ -68,10 +72,11 @@ function initState() {
   };
 }
 
-function fold(state, event) {
-  if (event.type !== 'assistant/message') return;
+/** 从事件计算一次调用的费用条目(纯计算,不产生副作用);非计费事件返回 null。 */
+function computeEntry(event) {
+  if (event.type !== 'assistant/message') return null;
   const data = event.data;
-  if (!data || !data.usage) return;
+  if (!data || !data.usage) return null;
   const src = data.message && data.message.source;
   const model = (src && src.model) || '';
   const usage = data.usage;
@@ -102,7 +107,7 @@ function fold(state, event) {
   const billed = input + cacheRead + cacheWrite;
   const cacheHitRate = billed > 0 ? (cacheRead / billed) * 100 : null;
 
-  const entry = {
+  return {
     seq: event.seq, time, turn: data.turn, step: data.step,
     model, rateLabel: u.label, billing: u.billing, scheme: u.scheme,
     inputTokens: input, outputTokens: output,
@@ -123,6 +128,34 @@ function fold(state, event) {
       scheme: u.scheme,
     },
   };
+}
+
+/** 把一条费用条目累加进按天桶结构(day: { total, calls, byHour: {hour: {model: cost}}, byModel: {model: {cost, calls}} })。 */
+function accumulateInto(byDay, entry) {
+  const model = entry.model || 'unknown';
+  const bj = new Date(entry.time + 8 * 3600e3);
+  const dateKey = bj.toISOString().slice(0, 10);
+  const hourKey = String(bj.getUTCHours()).padStart(2, '0');
+  let day = byDay[dateKey];
+  if (!day) { day = { total: 0, calls: 0, byHour: {}, byModel: {} }; byDay[dateKey] = day; }
+  day.total += entry.totalCostRmb;
+  day.calls += 1;
+  let hour = day.byHour[hourKey];
+  if (!hour) { hour = {}; day.byHour[hourKey] = hour; }
+  hour[model] = (hour[model] || 0) + entry.totalCostRmb;
+  let dm = day.byModel[model];
+  if (!dm) { dm = { cost: 0, calls: 0 }; day.byModel[model] = dm; }
+  dm.cost += entry.totalCostRmb;
+  dm.calls += 1;
+}
+
+/** 把一条费用条目累加进本会话状态(调用方保证传入新引用)。 */
+function fold(state, entry) {
+  const model = entry.model || '';
+  const input = entry.inputTokens;
+  const output = entry.outputTokens;
+  const cacheRead = entry.cacheReadTokens;
+  const cacheWrite = entry.cacheWriteTokens;
 
   state.calls += 1;
   state.inputTokens += input;
@@ -130,15 +163,15 @@ function fold(state, event) {
   state.cacheReadTokens += cacheRead;
   state.cacheWriteTokens += cacheWrite;
   state.cacheTokens += cacheRead + cacheWrite;
-  state.relayCostCredit += relayCostCredit;
-  state.relayCostRmb += relayCostRmb;
-  state.legacyCostRmb += legacyCostRmb;
-  state.totalCostRmb += totalCostRmb;
+  state.relayCostCredit += entry.relayCostCredit;
+  state.relayCostRmb += entry.relayCostRmb;
+  state.legacyCostRmb += entry.legacyCostRmb;
+  state.totalCostRmb += entry.totalCostRmb;
   state.lastCall = entry;
   state.history.unshift(entry);
-  if (state.history.length > 100) state.history.length = 100;
+  if (state.history.length > HISTORY_CAP) state.history.length = HISTORY_CAP;
 
-  const turnKey = data.turn;
+  const turnKey = entry.turn;
   if (turnKey !== undefined && turnKey !== null) {
     let t = state.turns[turnKey];
     if (!t) {
@@ -150,79 +183,112 @@ function fold(state, event) {
     t.cacheReadTokens += cacheRead;
     t.cacheWriteTokens += cacheWrite;
     t.cacheTokens += cacheRead + cacheWrite;
-    t.relayCostCredit += relayCostCredit;
-    t.relayCostRmb += relayCostRmb;
-    t.legacyCostRmb += legacyCostRmb;
-    t.totalCostRmb += totalCostRmb;
+    t.relayCostCredit += entry.relayCostCredit;
+    t.relayCostRmb += entry.relayCostRmb;
+    t.legacyCostRmb += entry.legacyCostRmb;
+    t.totalCostRmb += entry.totalCostRmb;
     t.calls += 1;
     t.models[model] = (t.models[model] || 0) + 1;
     state.lastTurnKey = turnKey;
   }
 
-  // 用量统计:按北京时间按 天/小时/模型 累计花费(人民币)
-  const mkey = model || 'unknown';
-  const bj = new Date(time + 8 * 3600e3);
-  const dateKey = bj.toISOString().slice(0, 10);
-  const hourKey = String(bj.getUTCHours()).padStart(2, '0');
-  let day = state.byDay[dateKey];
-  if (!day) { day = { total: 0, calls: 0, byHour: {}, byModel: {} }; state.byDay[dateKey] = day; }
-  day.total += totalCostRmb;
-  day.calls += 1;
-  let hour = day.byHour[hourKey];
-  if (!hour) { hour = {}; day.byHour[hourKey] = hour; }
-  hour[mkey] = (hour[mkey] || 0) + totalCostRmb;
-  let dm = day.byModel[mkey];
-  if (!dm) { dm = { cost: 0, calls: 0 }; day.byModel[mkey] = dm; }
-  dm.cost += totalCostRmb;
-  dm.calls += 1;
+  accumulateInto(state.byDay, entry);
+}
+
+/** 由按天桶聚合出今日(按小时)与本月(按天)统计。 */
+function aggregateStats(byDay, todayKey, monthPrefix) {
+  const td = byDay[todayKey];
+  const statsToday = td ? {
+    total: td.total, calls: td.calls, byHour: td.byHour, byModel: td.byModel,
+  } : { total: 0, calls: 0, byHour: {}, byModel: {} };
+  const statsMonth = { total: 0, calls: 0, byDay: {}, byModel: {} };
+  for (const key of Object.keys(byDay)) {
+    if (!key.startsWith(monthPrefix)) continue;
+    const dom = String(Number(key.slice(8, 10)));
+    const day = byDay[key];
+    statsMonth.total += day.total;
+    statsMonth.calls += day.calls;
+    let db = statsMonth.byDay[dom];
+    if (!db) { db = {}; statsMonth.byDay[dom] = db; }
+    for (const hourKey of Object.keys(day.byHour)) {
+      const hm = day.byHour[hourKey];
+      for (const mk of Object.keys(hm)) db[mk] = (db[mk] || 0) + hm[mk];
+    }
+    for (const mk of Object.keys(day.byModel)) {
+      let mm = statsMonth.byModel[mk];
+      if (!mm) { mm = { cost: 0, calls: 0 }; statsMonth.byModel[mk] = mm; }
+      mm.cost += day.byModel[mk].cost;
+      mm.calls += day.byModel[mk].calls;
+    }
+  }
+  return { statsToday, statsMonth };
+}
+
+// 全局累计(所有会话/工作区):由 syncGlobal 增量回填所有已加载会话的事件,
+// 以每会话事件索引(GLOBAL.idx)去重,重启后首次计算即可含全量历史。
+const GLOBAL = { calls: 0, totalCostRmb: 0, relayCostRmb: 0, legacyCostRmb: 0, byDay: {}, idx: {} };
+function accumulateGlobal(entry) {
+  GLOBAL.calls += 1;
+  GLOBAL.totalCostRmb += entry.totalCostRmb;
+  GLOBAL.relayCostRmb += entry.relayCostRmb;
+  GLOBAL.legacyCostRmb += entry.legacyCostRmb;
+  accumulateInto(GLOBAL.byDay, entry);
+}
+
+/** 增量同步全局累计:折叠每个已加载会话中尚未折叠的事件(按索引,顺序追加安全)。 */
+function makeSyncGlobal(sessions) {
+  return function syncGlobal() {
+    if (sessions === undefined) return;
+    const now = Date.now();
+    for (const session of sessions.list()) {
+      const evs = session.events;
+      if (!evs) continue;
+      const id = session.id;
+      let i = GLOBAL.idx[id] ?? 0;
+      while (i < evs.length) {
+        const ev = evs[i];
+        i += 1;
+        if (typeof ev.seq !== 'number') continue;
+        const entry = computeEntry(typeof ev.time === 'number' ? ev : { ...ev, time: now });
+        if (entry) accumulateGlobal(entry);
+      }
+      GLOBAL.idx[id] = i;
+    }
+  };
 }
 
 export default {
   name: 'dsh-cost-panel',
   inject: ['sessionProjections'],
   apply(ctx) {
+    // 全局统计:所有会话/工作区的调用累计,增量回填(含历史)
+    const syncGlobal = makeSyncGlobal(ctx.get('sessions'));
+    ctx.on('session/event', () => { syncGlobal(); });
+    syncGlobal(); // 启动时回填当前已加载会话
+
     ctx.sessionProjections.register({
       key: 'costSnapshot',
       schema: { parse: (v) => v },
       stateVersion: 2,
       init: initState,
       apply(state, event) {
-        fold(state, event);
-        return state;
+        const entry = computeEntry(event);
+        if (!entry) return state; // 非计费事件:保持同一引用,不触发通知
+        const next = Object.assign({}, state); // 新引用 → 触发投影变更通知
+        fold(next, entry);
+        return next;
       },
       view(state) {
+        syncGlobal(); // 交付前同步全局(增量,便宜),确保含所有已加载会话的最新事件
         const now = Date.now();
         const ltk = state.lastTurnKey;
         const turn = ltk !== null && ltk !== undefined ? state.turns[ltk] || null : null;
-
-        // 用量统计:今日按小时,本月按天;均为人民币
         const bj = new Date(now + 8 * 3600e3);
         const todayKey = bj.toISOString().slice(0, 10);
         const monthPrefix = todayKey.slice(0, 7);
-        const td = state.byDay[todayKey];
-        const statsToday = td ? {
-          total: td.total, calls: td.calls, byHour: td.byHour, byModel: td.byModel,
-        } : { total: 0, calls: 0, byHour: {}, byModel: {} };
-        const statsMonth = { total: 0, calls: 0, byDay: {}, byModel: {} };
-        for (const key of Object.keys(state.byDay)) {
-          if (!key.startsWith(monthPrefix)) continue;
-          const dom = String(Number(key.slice(8, 10)));
-          const day = state.byDay[key];
-          statsMonth.total += day.total;
-          statsMonth.calls += day.calls;
-          let db = statsMonth.byDay[dom];
-          if (!db) { db = {}; statsMonth.byDay[dom] = db; }
-          for (const hourKey2 of Object.keys(day.byHour)) {
-            const hm = day.byHour[hourKey2];
-            for (const mk of Object.keys(hm)) db[mk] = (db[mk] || 0) + hm[mk];
-          }
-          for (const mk of Object.keys(day.byModel)) {
-            let mm = statsMonth.byModel[mk];
-            if (!mm) { mm = { cost: 0, calls: 0 }; statsMonth.byModel[mk] = mm; }
-            mm.cost += day.byModel[mk].cost;
-            mm.calls += day.byModel[mk].calls;
-          }
-        }
+
+        const local = aggregateStats(state.byDay, todayKey, monthPrefix);
+        const global = aggregateStats(GLOBAL.byDay, todayKey, monthPrefix);
 
         return {
           totals: {
@@ -238,9 +304,18 @@ export default {
           lastCall: state.lastCall,
           history: state.history,
           scheme: schemeInfo(now),
-          statsToday,
-          statsMonth,
+          statsToday: local.statsToday,
+          statsMonth: local.statsMonth,
           statsLabel: { today: todayKey, month: monthPrefix },
+          global: {
+            totals: {
+              calls: GLOBAL.calls, totalCostRmb: GLOBAL.totalCostRmb,
+              relayCostRmb: GLOBAL.relayCostRmb, legacyCostRmb: GLOBAL.legacyCostRmb,
+            },
+            statsToday: global.statsToday,
+            statsMonth: global.statsMonth,
+            label: { today: todayKey, month: monthPrefix },
+          },
           prices: {
             creditToRmb: CREDIT_TO_RMB,
             defaultRelay: DEFAULT_RELAY,
