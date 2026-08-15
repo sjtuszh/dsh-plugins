@@ -1,0 +1,24 @@
+{
+  "name": "dsh-cost-panel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DeepSeek 双轨计费面板（静态版）:sessionProjections 投影驱动,重启自动加载",
+  "type": "module",
+  "main": "lib/host.js",
+  "exports": {
+    ".": "./lib/host.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  }
+}
