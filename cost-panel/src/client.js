@@ -120,6 +120,22 @@ return {
       const [showHistory, setShowHistory] = React.useState(false);
       const [history, setHistory] = React.useState([]);
       const seenSeq = React.useRef(0);
+      // 卡片延迟关闭:鼠标移出 0.5s 后才关闭;期间移回则取消。
+      const closeTimer = React.useRef(null);
+      const scheduleClose = () => {
+        if (showHistory) return;
+        if (closeTimer.current !== null) return;
+        closeTimer.current = ctx.timeout(() => {
+          closeTimer.current = null;
+          setOpen(false);
+        }, 500);
+      };
+      const cancelClose = () => {
+        if (closeTimer.current !== null) {
+          closeTimer.current();
+          closeTimer.current = null;
+        }
+      };
 
       React.useEffect(() => {
         let alive = true;
@@ -148,6 +164,7 @@ return {
         return () => {
           alive = false;
           dispose();
+          cancelClose();
         };
       }, [sessionId]);
 
@@ -181,7 +198,7 @@ return {
       ];
       const creditLine = t.relayCostCredit > 0 ? '额度 $' + t.relayCostCredit.toFixed(4) + ' · 折 ¥' + t.relayCostRmb.toFixed(4) : '';
 
-      return React.createElement('div', { className: 'dsc-wrap', onMouseEnter: () => setOpen(true), onMouseLeave: () => { if (!showHistory) setOpen(false); } },
+      return React.createElement('div', { className: 'dsc-wrap', onMouseEnter: () => { cancelClose(); setOpen(true); }, onMouseLeave: scheduleClose },
         React.createElement('div', { className: 'dsc-chip', title: 'DeepSeek 计费 · 悬停查看详情' },
           React.createElement('span', null, fmtYuan(t.totalCostRmb)),
         ),
