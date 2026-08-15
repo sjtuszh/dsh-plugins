@@ -12,7 +12,7 @@
 //  3. 三层聚合:session totals / per-turn totals / call history(最近 100 条);
 //  4. 账本持久化:激活时恢复、运行中每 5s 增量 flush、停止时强制保存、
 //     损坏时从空内存重建;
-//  5. 暴露 cost:snapshot 与 cost:history 两个 Package-private RPC。
+//  5. 暴露 cost:snapshot / cost:history / cost:prices 三个 Package-private RPC。
 //
 // 依赖服务:session/event 事件、sessions、fs、timer(经 ctx.get / inject)。
 // ============================================================================
@@ -45,6 +45,9 @@ return {
         peak: { hit: 0.30, miss: 9.0, out: 27.0 },
       },
     };
+
+    const SCHEME_LABELS = { old: '旧价(8/17前)', off: '空闲价', peak: '高峰价' };
+    const TIER_LABELS = { flash: 'Flash 档（deepseek-*）', pro: 'Pro 档（deepseek-*-pro）' };
 
     const isPeak = (now) => {
       const bj = new Date(now + 8 * 3600e3);
@@ -304,6 +307,28 @@ return {
       replay(sessionId);
       const s = perSession.get(sessionId);
       return { calls: s ? s.history : [] };
+    });
+
+    harness.handle('cost:prices', async () => {
+      const now = Date.now();
+      const relay = Object.keys(RELAY_RATES).map((model) => ({ model, ...RELAY_RATES[model] }));
+      const legacy = Object.keys(LEGACY_RATES).map((tier) => ({
+        tier,
+        label: TIER_LABELS[tier] || tier,
+        schemes: Object.keys(LEGACY_RATES[tier]).map((key) => ({
+          key,
+          label: SCHEME_LABELS[key] || key,
+          ...LEGACY_RATES[tier][key],
+        })),
+      }));
+      return {
+        creditToRmb: CREDIT_TO_RMB,
+        defaultRelay: DEFAULT_RELAY,
+        peakHours: '北京时间 09:00–12:00、14:00–18:00',
+        scheme: schemeInfo(now),
+        relay,
+        legacy,
+      };
     });
   },
 };

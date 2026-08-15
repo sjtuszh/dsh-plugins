@@ -62,6 +62,18 @@ return {
 .dsc-callDetail{flex:1;min-width:0;font-size:10px;line-height:16px;color:var(--dsw-alias-label-secondary)}
 .dsc-callCost{color:var(--dsw-alias-label-primary);font-weight:600}
 .dsc-callRate{font-size:10px;color:var(--dsw-alias-state-success-primary,var(--dsw-alias-label-secondary));margin-top:4px}
+.dsc-tabs{display:flex;align-items:center;gap:4px;min-width:0}
+.dsc-tab{box-sizing:border-box;height:24px;padding:0 10px;border:1px solid transparent;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:11px;cursor:pointer;line-height:22px;white-space:nowrap}
+.dsc-tab:hover{background:var(--dsw-alias-bg-layer-1)}
+.dsc-tab.active{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l1)}
+.dsc-priceNote{font-size:10px;color:var(--dsw-alias-label-tertiary);margin-top:8px;line-height:16px}
+.dsc-priceSecTitle{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary);margin:12px 0 4px}
+.dsc-priceTable{width:100%;border-collapse:collapse;font-size:10px;font-variant-numeric:tabular-nums}
+.dsc-priceTable th,.dsc-priceTable td{text-align:right;padding:3px 6px;border-bottom:1px solid var(--dsw-alias-border-l1);white-space:nowrap}
+.dsc-priceTable th:first-child,.dsc-priceTable td:first-child{text-align:left}
+.dsc-priceTable th{color:var(--dsw-alias-label-caption);font-weight:500}
+.dsc-priceTable td{color:var(--dsw-alias-label-secondary)}
+.dsc-priceTable td.model{color:var(--dsw-alias-label-primary);font-family:var(--dsh-font-mono,monospace)}
 `);
 
     const fmtYuan = (v) => {
@@ -69,12 +81,6 @@ return {
       if (v >= 1) return '¥' + v.toFixed(2);
       if (v >= 0.01) return '¥' + v.toFixed(3);
       return '¥' + v.toFixed(5);
-    };
-    const fmtCredit = (v) => {
-      if (!v) return '$0';
-      if (v >= 1) return '$' + v.toFixed(2);
-      if (v >= 0.01) return '$' + v.toFixed(3);
-      return '$' + v.toFixed(5);
     };
     const fmtTok = (v) => {
       if (!v) return '0';
@@ -119,6 +125,8 @@ return {
       const [open, setOpen] = React.useState(false);
       const [showHistory, setShowHistory] = React.useState(false);
       const [history, setHistory] = React.useState([]);
+      const [tab, setTab] = React.useState('calls');
+      const [prices, setPrices] = React.useState(null);
       const seenSeq = React.useRef(0);
       // 卡片延迟关闭:鼠标移出 0.5s 后才关闭;期间移回则取消。
       const closeTimer = React.useRef(null);
@@ -176,6 +184,57 @@ return {
         } catch (e) {
           setHistory([]);
         }
+        try {
+          const res = await host.call('cost:prices');
+          setPrices(res);
+        } catch (e) {
+          setPrices(null);
+        }
+      };
+
+      const renderPrices = () => {
+        if (!prices) return React.createElement('div', { className: 'dsc-empty' }, '定价表加载失败');
+        const rmb = (v) => fmtRate(v * (prices.creditToRmb || 0.4));
+        const relayRows = (prices.relay || []).map((r) => React.createElement('tr', { key: r.model },
+          React.createElement('td', { className: 'model' }, r.model),
+          React.createElement('td', null, '¥' + rmb(r.input)),
+          React.createElement('td', null, '¥' + rmb(r.output)),
+          React.createElement('td', null, '¥' + rmb(r.cacheRead)),
+          React.createElement('td', null, '¥' + rmb(r.cacheWrite)),
+        ));
+        const legacySecs = (prices.legacy || []).map((sec) => React.createElement('div', { key: sec.tier, className: 'dsc-priceSec' },
+          React.createElement('div', { className: 'dsc-priceSecTitle' }, sec.label || sec.tier),
+          React.createElement('table', { className: 'dsc-priceTable' },
+            React.createElement('thead', null, React.createElement('tr', null,
+              React.createElement('th', null, '方案'),
+              React.createElement('th', null, '缓存命中 ¥/M'),
+              React.createElement('th', null, '输入未命中 ¥/M'),
+              React.createElement('th', null, '输出 ¥/M'),
+            )),
+            React.createElement('tbody', null, (sec.schemes || []).map((s) => React.createElement('tr', { key: s.key },
+              React.createElement('td', null, s.label),
+              React.createElement('td', null, '¥' + fmtRate(s.hit)),
+              React.createElement('td', null, '¥' + fmtRate(s.miss)),
+              React.createElement('td', null, '¥' + fmtRate(s.out)),
+            ))),
+          ),
+        ));
+        const schemeTag = prices.scheme ? schemeLabel(prices.scheme.label) : '';
+        return React.createElement('div', null,
+          React.createElement('div', { className: 'dsc-priceNote' }, 'Relay/GPT 模型按美元额度计费,已按 1$ = ¥' + (prices.creditToRmb || 0.4) + ' 折算为人民币;DeepSeek 官方模型直接人民币计费。当前计价方案:' + (schemeTag || '—') + ' (' + (prices.peakHours || '') + ')'),
+          React.createElement('div', { className: 'dsc-priceSecTitle' }, 'Relay / GPT 模型（¥/1M tokens）'),
+          React.createElement('table', { className: 'dsc-priceTable' },
+            React.createElement('thead', null, React.createElement('tr', null,
+              React.createElement('th', null, '模型'),
+              React.createElement('th', null, '输入'),
+              React.createElement('th', null, '输出'),
+              React.createElement('th', null, '缓存读'),
+              React.createElement('th', null, '缓存写'),
+            )),
+            React.createElement('tbody', null, relayRows),
+          ),
+          legacySecs,
+        );
       };
 
       const t = (snap && snap.totals) || { calls: 0, inputTokens: 0, outputTokens: 0, cacheTokens: 0, relayCostCredit: 0, relayCostRmb: 0, legacyCostRmb: 0, totalCostRmb: 0 };
@@ -196,7 +255,8 @@ return {
         { label: '输出', color: '#22c55e', v: buckets.output },
         { label: '缓存', color: '#a78bfa', v: buckets.cache },
       ];
-      const creditLine = t.relayCostCredit > 0 ? '额度 $' + t.relayCostCredit.toFixed(4) + ' · 折 ¥' + t.relayCostRmb.toFixed(4) : '';
+      // 所有价格统一人民币显示:Relay 额度按 1$ = ¥0.4 折算。
+      const creditLine = t.relayCostRmb > 0 ? 'Relay 折算 ' + fmtYuan(t.relayCostRmb) : '';
 
       return React.createElement('div', { className: 'dsc-wrap', onMouseEnter: () => { cancelClose(); setOpen(true); }, onMouseLeave: scheduleClose },
         React.createElement('div', { className: 'dsc-chip', title: 'DeepSeek 计费 · 悬停查看详情' },
@@ -231,20 +291,24 @@ return {
         showHistory && React.createElement('div', { className: 'dsc-modal', onClick: () => setShowHistory(false) },
           React.createElement('div', { className: 'dsc-panel', onClick: (e) => e.stopPropagation() },
             React.createElement('div', { className: 'dsc-panelHead' },
-              React.createElement('span', { className: 'dsc-panelTitle' }, '历史调用 (' + history.length + ')'),
+              React.createElement('div', { className: 'dsc-tabs' },
+                React.createElement('button', { className: 'dsc-tab' + (tab === 'calls' ? ' active' : ''), onClick: () => setTab('calls') }, '历史调用' + (tab === 'calls' ? ' (' + history.length + ')' : '')),
+                React.createElement('button', { className: 'dsc-tab' + (tab === 'prices' ? ' active' : ''), onClick: () => setTab('prices') }, '定价表'),
+              ),
               React.createElement('button', { className: 'dsc-close', onClick: () => setShowHistory(false) }, '✕'),
             ),
-            history.length === 0
-              ? React.createElement('div', { className: 'dsc-empty' }, '暂无历史调用(插件安装前的调用不计入明细,但已计入总账)')
-              : history.map((c) => {
-                const sym = c.billing === 'relay' ? '$' : '¥';
+            tab === 'calls'
+              ? (history.length === 0
+                ? React.createElement('div', { className: 'dsc-empty' }, '暂无历史调用(插件安装前的调用不计入明细,但已计入总账)')
+                : history.map((c) => {
+                // 单价与费用统一为人民币:relay 单价 × creditToRmb(1$ = ¥0.4) 折算。
+                const rmb = c.billing === 'relay' ? (c.unit.creditToRmb || 0.4) : 1;
+                const rate = (v) => fmtRate(v * rmb);
                 const parts = [];
-                if (c.inputTokens > 0) parts.push('未命中 ' + fmtTok(c.inputTokens) + ' × ' + sym + fmtRate(c.unit.input) + '/M');
-                if (c.cacheTokens > 0) parts.push('缓存 ' + fmtTok(c.cacheTokens) + ' × ' + sym + fmtRate(c.unit.cacheRead) + '/M');
-                if (c.outputTokens > 0) parts.push('输出 ' + fmtTok(c.outputTokens) + ' × ' + sym + fmtRate(c.unit.output) + '/M');
-                const costLine = c.billing === 'relay'
-                  ? fmtCredit(c.relayCostCredit) + ' (≈' + fmtYuan(c.relayCostRmb) + ')'
-                  : fmtYuan(c.legacyCostRmb);
+                if (c.inputTokens > 0) parts.push('未命中 ' + fmtTok(c.inputTokens) + ' × ¥' + rate(c.unit.input) + '/M');
+                if (c.cacheTokens > 0) parts.push('缓存 ' + fmtTok(c.cacheTokens) + ' × ¥' + rate(c.unit.cacheRead) + '/M');
+                if (c.outputTokens > 0) parts.push('输出 ' + fmtTok(c.outputTokens) + ' × ¥' + rate(c.unit.output) + '/M');
+                const costLine = fmtYuan(c.totalCostRmb);
                 return React.createElement('div', { key: c.seq, className: 'dsc-call' },
                   React.createElement('div', { className: 'dsc-callHead' },
                     React.createElement('span', { className: 'dsc-callTime' }, fmtTime(c.time)),
@@ -259,7 +323,8 @@ return {
                   ),
                   React.createElement('div', { className: 'dsc-callRate' }, '缓存命中率 ' + (c.cacheHitRate !== null && c.cacheHitRate !== undefined ? c.cacheHitRate.toFixed(1) + '%' : '—')),
                 );
-              }),
+              }))
+              : renderPrices(),
           ),
         ),
       );
