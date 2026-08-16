@@ -159,11 +159,60 @@ window.__ModuleLoader__.load({
               } catch (e) { /* ignore */ }
               if (menuRef.current) close();
             };
+            // 拖拽会话到聊天窗 → 自动变成 @会话名
+            var onDragOver = function (ev) {
+              try {
+                var t = ev.target;
+                if (!t || typeof t.closest !== "function") return;
+                if (!t.closest("[data-composer-card]")) return;
+                ev.preventDefault();
+                if (ev.dataTransfer) ev.dataTransfer.dropEffect = "copy";
+              } catch (e) { /* ignore */ }
+            };
+            var onDrop = function (ev) {
+              try {
+                var t = ev.target;
+                if (!t || typeof t.closest !== "function") return;
+                var card = t.closest("[data-composer-card]");
+                if (!card) return;
+                ev.preventDefault();
+                var id = "";
+                try { id = ev.dataTransfer.getData("text/plain") || ""; } catch (e) { id = ""; }
+                id = id.trim();
+                if (!id) return;
+                var ta = card.querySelector("textarea");
+                if (!ta) return;
+                var label = id;
+                if (sessions) {
+                  var byId = sessions.list.getSnapshot().byId;
+                  var sum = byId[id];
+                  if (sum && (sum.displayTitle || sum.title)) label = sum.displayTitle || sum.title;
+                }
+                var value = typeof ta.value === "string" ? ta.value : "";
+                var caret = typeof ta.selectionStart === "number" ? ta.selectionStart : value.length;
+                var text = "@" + label + " ";
+                var next = value.slice(0, caret) + text + value.slice(caret);
+                var pos = caret + text.length;
+                var proto = window.HTMLTextAreaElement.prototype;
+                var setter = Object.getOwnPropertyDescriptor(proto, "value").set;
+                setter.call(ta, next);
+                try { ta.focus(); } catch (e2) { /* ignore */ }
+                ta.setSelectionRange(pos, pos);
+                ta.dispatchEvent(new Event("input", { bubbles: true }));
+                if (fetchTimer.current) window.clearTimeout(fetchTimer.current);
+                lastKey.current = null;
+                setMenu(null);
+              } catch (e) {
+                console.error("xchat drop failed: " + String(e && e.message ? e.message : e));
+              }
+            };
             var ok = true;
             try {
               document.addEventListener("input", onInput, true);
               document.addEventListener("keydown", onKeyDown, true);
               document.addEventListener("pointerdown", onPointerDown, true);
+              document.addEventListener("dragover", onDragOver, true);
+              document.addEventListener("drop", onDrop, true);
             } catch (e) {
               ok = false;
               console.error("xchat menu attach failed: " + String(e && e.message ? e.message : e));
@@ -176,6 +225,8 @@ window.__ModuleLoader__.load({
                   document.removeEventListener("input", onInput, true);
                   document.removeEventListener("keydown", onKeyDown, true);
                   document.removeEventListener("pointerdown", onPointerDown, true);
+                  document.removeEventListener("dragover", onDragOver, true);
+                  document.removeEventListener("drop", onDrop, true);
                 } catch (e) { /* ignore */ }
               }
             };
