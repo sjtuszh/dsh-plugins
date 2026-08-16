@@ -212,27 +212,47 @@ return {
 
       // parent → direct subagent children. Primary source: the runtime's own
       // per-parent subagent catalog (subagentsByParent), which tracks children
-      // reliably; fallback: index byId summaries by parentSessionId.
+      // with their durable labels; fallback: index byId summaries by parentId.
       const childrenOf = {};
+      const childLabels = {};
       const catalog = (list && list.subagentsByParent) || {};
       for (const parentId of Object.keys(catalog)) {
         const c = catalog[parentId];
-        const kids = (c && Array.isArray(c.entries) ? c.entries : [])
-          .filter((e) => e && e.kind === 'child' && typeof e.id === 'string')
-          .map((e) => e.id);
+        const entries = (c && Array.isArray(c.entries) ? c.entries : []);
+        const kids = entries.filter((e) => e && e.kind === 'child' && typeof e.id === 'string').map((e) => e.id);
         if (kids.length > 0) childrenOf[parentId] = kids;
+        for (const e of entries) {
+          if (e && e.kind === 'child' && typeof e.id === 'string' && typeof e.label === 'string' && e.label !== '') {
+            childLabels[e.id] = e.label;
+          }
+        }
       }
       for (const id of Object.keys(byId)) {
         const s = byId[id];
-        if (s && s.parentSessionId && byId[s.parentSessionId] !== undefined) {
-          const bucket = childrenOf[s.parentSessionId] || (childrenOf[s.parentSessionId] = []);
+        // fallback only for REAL subagent children: `parentId` is also set on
+        // other session kinds (e.g. forks), which must never appear as children.
+        if (s && s.origin === 'subagent' && s.parentId && byId[s.parentId] !== undefined) {
+          const bucket = childrenOf[s.parentId] || (childrenOf[s.parentId] = []);
           if (!bucket.includes(id)) bucket.push(id);
         }
       }
       for (const key of Object.keys(childrenOf)) {
         childrenOf[key].sort((a, b) => (byId[a].createdAt || 0) - (byId[b].createdAt || 0));
       }
-      console.log('[sorg] parents with children:', Object.keys(childrenOf).length, Object.keys(childrenOf).slice(0, 5));
+      // subagent label → display name: strip the 'agent-teams:' prefix so a
+      // member shows as its member name; other labels pass through verbatim.
+      const childName = (cid) => {
+        const raw = childLabels[cid];
+        if (raw !== undefined) {
+          const prefix = raw.slice(0, raw.indexOf(':') === -1 ? raw.length : raw.indexOf(':'));
+          if (prefix === 'agent-teams') {
+            const parts = raw.split(':');
+            return parts[parts.length - 1] || raw;
+          }
+          return raw;
+        }
+        return titleOf(cid);
+      };
 
       // ---- persistence helpers ----
       const sweepGroups = (gs, ord) => {
@@ -458,7 +478,8 @@ return {
       };
 
       // ---- render helpers ----
-      // one subagent child row: display-only, opens on click
+      // one subagent child row: display-only, opens on click; shows the member
+      // name from the subagent label when available
       const childRow = (cid) => {
         return React.createElement('div', {
           key: cid,
@@ -466,7 +487,7 @@ return {
           onClick: () => openSession(cid),
           children: [
             React.createElement('span', { className: 'sorg-ico' }, SESSION_ICON),
-            React.createElement('span', { className: 'sorg-name' }, titleOf(cid)),
+            React.createElement('span', { className: 'sorg-name' }, childName(cid)),
             React.createElement('span', { className: 'sorg-time' }, timeOf(cid)),
           ],
         });
