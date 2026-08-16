@@ -64,7 +64,10 @@ return {
     const sessionsService = ctx.get('sessions');
     const workspacesService = ctx.get('workspaces');
 
-    const SESSION_ICON = '\u{1F454}'; // necktie 👔
+    const CHAT_ICON = '\u{1F4AC}'; // 💬 speech bubble — ordinary conversations
+    const LEADER_ICON = '\u{1F454}'; // 👔 necktie — agent-teams captain (main session)
+    const WORKER_ICON = '\u{1F477}'; // 👷 worker — agent-teams member subagent
+    const SUBAGENT_ICON = '\u{1F527}'; // 🔧 wrench — generic (non team) subagent child
     const WORKSPACE_ICON = '\u{1F4C2}'; // open folder 📂
     const NEW_GROUP_NAME = '新建分组';
 
@@ -241,6 +244,16 @@ return {
       }
       // subagent label → display name: strip the 'agent-teams:' prefix so a
       // member shows as its member name; other labels pass through verbatim.
+      const isAgentTeamsChild = (cid) => {
+        const raw = childLabels[cid];
+        return raw !== undefined && raw.slice(0, 12) === 'agent-teams:';
+      };
+      // parents that lead an agent-teams team (≥1 member child): their session
+      // row becomes the leader icon 👔
+      const agentTeamsParents = new Set();
+      for (const parentId of Object.keys(childrenOf)) {
+        if (childrenOf[parentId].some(isAgentTeamsChild)) agentTeamsParents.add(parentId);
+      }
       const childName = (cid) => {
         const raw = childLabels[cid];
         if (raw !== undefined) {
@@ -478,15 +491,16 @@ return {
       };
 
       // ---- render helpers ----
-      // one subagent child row: display-only, opens on click; shows the member
-      // name from the subagent label when available
+      // one subagent child row: display-only, opens on click; agent-teams
+      // members show the worker icon 👷 and their member name, other subagent
+      // children show 🔧
       const childRow = (cid) => {
         return React.createElement('div', {
           key: cid,
           className: 'sorg-row sorg-title-sm sorg-child',
           onClick: () => openSession(cid),
           children: [
-            React.createElement('span', { className: 'sorg-ico' }, SESSION_ICON),
+            React.createElement('span', { className: 'sorg-ico' }, isAgentTeamsChild(cid) ? WORKER_ICON : SUBAGENT_ICON),
             React.createElement('span', { className: 'sorg-name' }, childName(cid)),
             React.createElement('span', { className: 'sorg-time' }, timeOf(cid)),
           ],
@@ -525,7 +539,7 @@ return {
               onClick: (e) => { e.stopPropagation(); toggleExpanded(childKey); },
             }, childOpen ? '\u25BE' : '\u25B8'),
             statusDot !== null && React.createElement('span', { key: 'st', className: statusDot }),
-            React.createElement('span', { className: 'sorg-ico' }, SESSION_ICON),
+            React.createElement('span', { className: 'sorg-ico' }, agentTeamsParents.has(id) ? LEADER_ICON : CHAT_ICON),
             React.createElement('span', { className: 'sorg-name' }, titleOf(id)),
             React.createElement('span', { className: 'sorg-time' }, timeOf(id)),
             React.createElement('button', { type: 'button', className: 'sorg-dots', onClick: (e) => sessionMenu(e, id) }, '\u22EF'),
