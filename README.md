@@ -12,6 +12,9 @@
 | 计费面板 · 静态版 | [`cost-panel-static/`](cost-panel-static/) | ✅ 可用 | 与动态版功能等价,profile 挂载、sessionProjections 投影驱动:随 `dsh web` 启动自动加载、免批准。已知差异:分叉按全量计费、无分叉徽章(详见其 README) |
 | 文件树浏览面板 | [`file-panel/`](file-panel/) | ✅ 可用 | 页面右侧浮动 📁 按钮拉出文件树浏览栏,以当前会话 cwd 为根;行内 ⋯ 菜单支持「复制文件地址」「打开文件浏览器查看」(动态版,cordis_define + run) |
 | 文件树面板 · 静态版 | [`file-panel-static/`](file-panel-static/) | 🚧 待挂载验证 | 与动态版功能等价,双包 profile 挂载(UI + Typert remote mount),Typert 清单已通过 dsh 真实校验器;安装后需重启 dsh web 验证(详见其 README) |
+| 侧栏会话管理器(实验区) | [`sidebar-manager/`](sidebar-manager/) | 🧪 实验区验证中 | priority -1 影子替换官方 `sidebar.workspaces`,对话管理:改名/归档/分叉/排序/新建/搜索/在文件管理器中打开;停用即还原官方 |
+| 侧栏会话管理器 · 静态版 | [`sidebar-manager-static/`](sidebar-manager-static/) | 📦 源码就绪待装 | 双包 + Typert(rename RPC),冷会话改名链路已探针实证;待实验区 UX 验收后挂载(详见其 README) |
+| 侧栏会话管理器 · 分组版(动态) | [`organizer-client.js`](organizer-client.js) + [`organizer-host.js`](organizer-host.js) | 🧪 实验区验证中 | priority -2 替换官方 `sidebar.workspaces`:拖拽排序、放会话中间建组(分组嵌工作区)、拖进/拖出分组、≤1 会话自动解散、分组改名/删除、会话菜单(改名/复制/归档,无"文件管理器");状态持久化到工作区 `.dsh-session-organizer.json` |
 
 ## 🚀 快速开始
 
@@ -31,6 +34,8 @@ dsh-plugins/
 ├── LICENSE                        # MIT 许可证
 ├── MEMORY.md                      # 开发记忆(架构、踩坑、静态化方案)
 ├── COST_PANEL_REQUIREMENTS.md     # 计费插件需求说明
+├── organizer-client.js            # 会话侧边栏增强插件(动态版,Client 半边:拖拽排序/分组)
+├── organizer-host.js              # 会话侧边栏增强插件(动态版,Host 半边:状态读写 .dsh-session-organizer.json)
 ├── cost-panel/                    # 计费面板插件(动态版)
 │   ├── README.md                  # 插件文档(特性/计价规则/使用)
 │   └── src/

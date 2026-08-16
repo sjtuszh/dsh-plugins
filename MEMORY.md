@@ -307,4 +307,43 @@ if (s.baseline === null) {
 - 动态版 `file-1` 已迭代到 `pkg-4`（v2 样式/刷新 → v3 临时 .cmd 方案 → v4 整参引号形式），用户已验证定位正确。
 - 静态版：已装入 `profiles/web`（双包 + patch 三行：cost-panel/file-panel/file-panel-mount），组合树经 `dsh --profile web --dump-config` 验证；typert 清单过真实校验器；v5 host 改用 `TypertRemoteService`（绑定坑 §11.4b）。**重启验证中**——当前等待用户重启后确认。
 - **下次静态化前必读**：§3（包/格式）、§4（守卫/死锁/ctx）、§5（双条目）、§6（分叉/投影）
+
+---
+
+## 12. 侧栏会话管理器（sidebar-manager，2026-08 实验区 → 本体化）
+
+需求：在官方侧栏会话浏览区做"对话管理"（改名/归档/分叉/排序/新建/搜索），**先实验区、验证成功再改本体**。
+
+### 12.1 实验区机制：单槽位 priority 影子替换（关键）
+
+- `sidebar.workspaces` 是 **single 槽位**，官方注册在 `priority: 0`；槽位系统**最低 priority 渲染**（源码：`register at a different priority to shadow it (lowest renders)`）。
+- 实验插件以 `priority: -1` 注册同名槽位 → **顶掉官方、官方注册保留**；`cordis_stop` 即还原。零风险、秒级回滚。
+- 槽位契约：ownerProps `{wide, expandSidebar}`（shell 折叠态），标准 props `useSessions` + `useWorkspaces`（数据全齐，无需重做 store）。
+- 官方实现归属：`dsh-client-ui-sidebar`（外壳：注册 `sidebar` + 渲染 `sidebar.workspaces/settings/footer.action` 三孔）+ `dsh-client-ui-workspace`（注册 `sidebar.workspaces` 浏览区 + `directoryFlow` 子孔）。
+
+### 12.2 数据通道
+
+| 操作 | 客户端服务 |
+|---|---|
+| 打开/分叉/搜索 | `ctx.sessions`（open/fork/search） |
+| 归档/排序/改名(工作区)/新建/删除注册 | `ctx.workspaces`（archiveSession/insertSessionBefore/rename/insertBefore/startSession/delete/create/pickDirectory） |
+| **会话改名** | **无客户端 Remote** → Host RPC（动态 harness.handle / 静态 Typert `sessman/rename`） |
+| 打开所在目录 | `ctx.workspaces.openPath(session.cwd)` |
+
+### 12.3 冷会话改名（探针实证）
+
+- `sessionTitle.rename` 要求 **live session**；官方 host-apiproxy 的 `session.rename` 语义是"冷会话先恢复"（走 `ctx.agents.resume`，太重）。
+- 轻量等价：`sessionPersistence.load(id)` → `sessions.prepare(id, {seedSource:'persistence', seed, meta})`（`Session.fromRestore`）→ `sessions.enter`（装 append 钩子，不 announce）→ `sessionTitle.rename` → `detach()`。
+- **detach 安全性**：持久化层**全局订阅** `session/event`（`dsh-session-persistence` 源码确认），title 事件已进全局总线，detach 不影响冲刷。
+- **实证**：Host-only 探针 `sbm_probe_cold_rename`（`harness.defineTool`+`registerTool`，免批准）对真实冷会话跑通 before→renamed→after→restored 四段。
+
+### 12.4 动态工具注册注意
+
+动态 Host 工具**必须**先 `harness.defineTool(definition)` 再 `harness.registerTool(ctx, tool)`——直接 registerTool 会报 `dynamic tool registration must use a tool returned by harness.defineTool(...)`（实测踩过）。
+
+### 12.5 状态
+
+- 动态实验区 `sbm-1/pkg-2` 运行中（priority -1 影子生效，槽位占用已确认：dyn/sbm-1 active + x6 保留）；冷会话改名链路探针实证通过。
+- 静态本体化包 `sidebar-manager-static/` 源码就绪（双包 + Typert，清单过校验器），**待实验区 UX 验收后安装**（重启由用户执行）。
+- 待用户：① 实验区 UX 验收；② 拍板本体化 A（静态挂载）/ B（补丁官方 `dsh-client-ui-workspace/lib/client.js`，112KB 可读，升级会被覆盖）。
 - 静态化建议路径：先只固化文件浏览器（双包分离）验证跑通，再动计费
