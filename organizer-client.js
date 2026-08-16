@@ -32,6 +32,9 @@ return {
 .sorg-line-top{top:-2px}
 .sorg-line-bottom{bottom:-2px}
 .sorg-dot{flex:none;border-radius:50%;background:var(--sorg-dot-color,#4a90d9)}
+.sorg-dot-run{width:8px;height:8px;flex:none;border-radius:50%;background:#22c55e;margin-left:2px}
+.sorg-dot-wait{width:8px;height:8px;flex:none;border-radius:50%;background:#eab308;margin-left:2px}
+.sorg-child{color:var(--dsw-alias-label-secondary)}
 .sorg-caret{width:14px;flex:none;font-size:10px;color:var(--dsw-alias-label-tertiary);text-align:center;display:inline-flex;justify-content:center}
 .sorg-ico{width:16px;flex:none;font-size:13px;color:var(--dsw-alias-label-tertiary);text-align:center;display:inline-flex;justify-content:center}
 .sorg-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -207,6 +210,30 @@ return {
       const groupedMembers = new Set();
       for (const g of groups) for (const id of g.sessionIds) groupedMembers.add(id);
 
+      // parent → direct subagent children. Primary source: the runtime's own
+      // per-parent subagent catalog (subagentsByParent), which tracks children
+      // reliably; fallback: index byId summaries by parentSessionId.
+      const childrenOf = {};
+      const catalog = (list && list.subagentsByParent) || {};
+      for (const parentId of Object.keys(catalog)) {
+        const c = catalog[parentId];
+        const kids = (c && Array.isArray(c.entries) ? c.entries : [])
+          .filter((e) => e && e.kind === 'child' && typeof e.id === 'string')
+          .map((e) => e.id);
+        if (kids.length > 0) childrenOf[parentId] = kids;
+      }
+      for (const id of Object.keys(byId)) {
+        const s = byId[id];
+        if (s && s.parentSessionId && byId[s.parentSessionId] !== undefined) {
+          const bucket = childrenOf[s.parentSessionId] || (childrenOf[s.parentSessionId] = []);
+          if (!bucket.includes(id)) bucket.push(id);
+        }
+      }
+      for (const key of Object.keys(childrenOf)) {
+        childrenOf[key].sort((a, b) => (byId[a].createdAt || 0) - (byId[b].createdAt || 0));
+      }
+      console.log('[sorg] parents with children:', Object.keys(childrenOf).length, Object.keys(childrenOf).slice(0, 5));
+
       // ---- persistence helpers ----
       const sweepGroups = (gs, ord) => {
         // dissolve groups with ≤1 session; drop their order keys
@@ -333,14 +360,17 @@ return {
         e.dataTransfer.dropEffect = 'move';
         const rect = e.currentTarget.getBoundingClientRect();
         const ratio = (e.clientY - rect.top) / rect.height;
-        // inside a group, dragging between its own sessions only reorders:
-        // the center "create group" zone is disabled for same-group pairs.
+        // The center "create group" zone is ONLY active when NEITHER the dragged
+        // session nor the target lives inside a group. Dragging a session out of
+        // a group, or into a group, only ever inserts at the gap (before/after).
         const draggedAccount = accountOf[drag.sessionId] ?? '';
         const targetAccount = accountOf[sessionId] ?? '';
-        const sameGroup = draggedAccount.startsWith('g:') && draggedAccount === targetAccount;
-        const half = sameGroup
-          ? (ratio < 0.5 ? 'before' : 'after')
-          : (ratio < 0.3 ? 'before' : ratio > 0.7 ? 'after' : 'center');
+        const draggedInGroup = draggedAccount.startsWith('g:');
+        const targetInGroup = targetAccount.startsWith('g:');
+        const allowCenter = !draggedInGroup && !targetInGroup;
+        const half = allowCenter
+          ? (ratio < 0.3 ? 'before' : ratio > 0.7 ? 'after' : 'center')
+          : (ratio < 0.5 ? 'before' : 'after');
         setDrag((d) => d ? { ...d, over: { id: sessionId, half } } : d);
       };
       const onRowDrop = (e, targetId) => {
@@ -428,10 +458,33 @@ return {
       };
 
       // ---- render helpers ----
+      // one subagent child row: display-only, opens on click
+      const childRow = (cid) => {
+        return React.createElement('div', {
+          key: cid,
+          className: 'sorg-row sorg-title-sm sorg-child',
+          onClick: () => openSession(cid),
+          children: [
+            React.createElement('span', { className: 'sorg-ico' }, SESSION_ICON),
+            React.createElement('span', { className: 'sorg-name' }, titleOf(cid)),
+            React.createElement('span', { className: 'sorg-time' }, timeOf(cid)),
+          ],
+        });
+      };
+
       const row = (key, id) => {
         const marker = drag && drag.over && drag.over.id === id ? drag.over.half : null;
-        return React.createElement('div', {
-          key: id,
+        const summary = byId[id];
+        // status dot: yellow while the session waits for the user
+        // (pendingInteraction = approval/plan/answer), green while it runs;
+        // waiting outranks running.
+        const waiting = summary !== undefined && summary.pendingInteraction !== undefined && summary.pendingInteraction !== null;
+        const statusDot = waiting ? 'sorg-dot-wait' : (summary && summary.running ? 'sorg-dot-run' : null);
+        // sessions with subagent children become expandable
+        const children = childrenOf[id] || [];
+        const childKey = 's:' + id;
+        const childOpen = expanded[childKey] === true;
+        const rowEl = React.createElement('div', {
           className: 'sorg-row sorg-title-sm'
             + (id === current ? ' sorg-sel' : '')
             + (drag && drag.sessionId === id ? ' sorg-ghost' : '')
@@ -445,12 +498,22 @@ return {
           children: [
             marker === 'before' && React.createElement('div', { key: 'ln', className: 'sorg-line sorg-line-top' }),
             marker === 'after' && React.createElement('div', { key: 'ln', className: 'sorg-line sorg-line-bottom' }),
+            children.length > 0 && React.createElement('span', {
+              key: 'cr',
+              className: 'sorg-caret',
+              onClick: (e) => { e.stopPropagation(); toggleExpanded(childKey); },
+            }, childOpen ? '\u25BE' : '\u25B8'),
+            statusDot !== null && React.createElement('span', { key: 'st', className: statusDot }),
             React.createElement('span', { className: 'sorg-ico' }, SESSION_ICON),
             React.createElement('span', { className: 'sorg-name' }, titleOf(id)),
             React.createElement('span', { className: 'sorg-time' }, timeOf(id)),
             React.createElement('button', { type: 'button', className: 'sorg-dots', onClick: (e) => sessionMenu(e, id) }, '\u22EF'),
           ],
         });
+        return React.createElement('div', { key: id, className: 'sorg-grp' },
+          rowEl,
+          childOpen && React.createElement('div', { className: 'sorg-sub' }, children.map(childRow)),
+        );
       };
 
       const userGroupNode = (g) => {
