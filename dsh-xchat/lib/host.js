@@ -164,12 +164,13 @@ export default {
           type: 'object',
           additionalProperties: false,
           properties: {
-            ok: { type: 'boolean', required: true },
+            ok: { type: 'boolean' },
             reply: { type: 'string' },
             childId: { type: 'string' },
             target: { type: 'string' },
             note: { type: 'string' }
-          }
+          },
+          required: ['ok']
         },
         render: (_args, value) => [
           textBlock(value.ok
