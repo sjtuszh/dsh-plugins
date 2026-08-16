@@ -15,17 +15,33 @@ export default {
   name: 'dsh-xchat',
   inject: ['timer'],
   apply(ctx) {
-    const agents = ctx.get('agents')
-    const subagents = ctx.get('subagents')
-    const sessionQuery = ctx.get('sessionQuery')
-    const agentPresets = ctx.get('agentPresets')
-    const tools = ctx.get('tools')
-    if (!agents || !subagents || !sessionQuery || !tools) {
-      console.error('xchat: missing required services (agents/subagents/sessionQuery/tools)')
-      return
+    // 自诊断：无论成败都写文件，便于定位静态挂载问题
+    const diag = { ts: Date.now(), phase: 'start' }
+    const writeDiag = () => {
+      try {
+        const fs = ctx.get('fs')
+        if (fs && typeof fs.writeText === 'function') {
+          fs.resolve('C:\\Users\\22320\\Desktop\\dsh_WS\\xchat-diag.json', { cwd: 'C:\\Users\\22320\\Desktop\\dsh_WS' })
+            .then((t) => fs.writeText(t, JSON.stringify(diag, null, 2)))
+            .catch(() => {})
+        }
+      } catch (e) { /* ignore */ }
     }
+    try {
+      const agents = ctx.get('agents')
+      const subagents = ctx.get('subagents')
+      const sessionQuery = ctx.get('sessionQuery')
+      const agentPresets = ctx.get('agentPresets')
+      const tools = ctx.get('tools')
+      diag.services = {
+        agents: !!agents,
+        subagents: !!subagents,
+        sessionQuery: !!sessionQuery,
+        agentPresets: !!agentPresets,
+        tools: !!tools
+      }
 
-    const PLUGIN = 'xchat-bridge'
+      const PLUGIN = 'xchat-bridge'
     const active = []
     const resumed = new Map()
 
@@ -270,7 +286,23 @@ export default {
         }
       }
     }
-    tools.register(tool)
+    if (tools && typeof tools.register === 'function') {
+      try {
+        tools.register(tool)
+        diag.registered = true
+        try {
+          diag.visible = tools.get('xchat_query') !== undefined
+          diag.toolsCount = tools.schemas().length
+        } catch (e2) { diag.verifyErr = String(e2 && e2.message ? e2.message : e2) }
+      } catch (e) {
+        diag.registered = false
+        diag.registerError = String(e && e.message ? e.message : e)
+        diag.registerStack = e && e.stack ? String(e.stack).slice(0, 1500) : ''
+      }
+    } else {
+      diag.registered = false
+      diag.noToolsService = true
+    }
 
     ctx.effect(() => () => {
       for (const v of active) {
@@ -282,5 +314,14 @@ export default {
       }
       resumed.clear()
     })
+
+    diag.phase = 'done'
+    writeDiag()
+    } catch (e) {
+      diag.phase = 'error'
+      diag.error = String(e && e.message ? e.message : e)
+      diag.stack = e && e.stack ? String(e.stack).slice(0, 1500) : ''
+      writeDiag()
+    }
   },
 }
