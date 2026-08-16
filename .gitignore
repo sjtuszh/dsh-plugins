@@ -28,3 +28,6 @@ dsh-cost-ledger.json
 .env
 .env.*
 !.env.example
+
+# Nested standalone repo (dsh-agent-teams has its own remote/fork)
+dsh-agent-teams/

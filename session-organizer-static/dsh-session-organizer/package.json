@@ -1,0 +1,26 @@
+{
+  "name": "dsh-session-organizer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "会话侧边栏组织器(静态版):priority -2 影子替换 sidebar.workspaces,拖拽排序/分组,Typert remote 持久化",
+  "type": "module",
+  "main": "lib/host.js",
+  "exports": {
+    ".": "./lib/host.js",
+    "./client": "./lib/client.js",
+    "./typert": "./lib/typert.host.js",
+    "./remote": "./lib/typert.remote-client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  }
+}

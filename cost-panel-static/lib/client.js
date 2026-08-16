@@ -157,6 +157,9 @@ window.__ModuleLoader__.load({
     function BarChart(props) {
       var mode = props.mode;
       var data = props.data || {};
+      // 悬停提示状态(hook 必须在任何早退之前调用)
+      var hoverState = react.useState(null);
+      var hover = hoverState[0], setHover = hoverState[1];
       var W = 460, H = 150, ML = 36, MR = 8, MT = 10, MB = 18;
       var slots = [];
       if (mode === 'hours') {
@@ -191,14 +194,40 @@ window.__ModuleLoader__.load({
           return r;
         });
         var showTick = mode === 'hours' ? (idx % 4 === 0) : (slots.length > 16 ? idx % 2 === 0 : true);
-        return react.createElement('g', { key: s.key },
+        return react.createElement('g', { key: s.key,
+          onMouseEnter: function () { setHover({ key: s.key, label: s.label, buckets: s.buckets, idx: idx }); },
+          onMouseLeave: function () { setHover(null); } },
           rects,
           showTick ? react.createElement('text', { x: x + bw / 2, y: H - 4, fontSize: 8, fill: 'var(--dsw-alias-label-tertiary)', textAnchor: 'middle' }, s.label) : null);
       });
+      // 悬停提示:显示该柱合计与各模型费用(人民币)
+      var tip = null;
+      if (hover) {
+        var hb = hover.buckets || {};
+        var htotal = 0;
+        var hmodels = Object.keys(hb).filter(function (m) { return m; }).map(function (m) { htotal += hb[m]; return { m: m, v: hb[m] }; }).sort(function (a, b) { return b.v - a.v; });
+        var shownModels = Math.min(hmodels.length, 6);
+        var tipH = 22 + shownModels * 14 + 4 + (hmodels.length > 6 ? 12 : 0);
+        var barCX = ML + (hover.idx + 0.5) * bw;
+        var tipX = Math.max(ML, Math.min(W - 158 - MR, barCX - 79));
+        var lines = [];
+        lines.push(react.createElement('text', { key: 't', x: tipX + 8, y: MT + 13, fontSize: 10, fontWeight: 600, fill: 'var(--dsw-alias-label-primary)' }, hover.label + ' · 合计 ' + fmtYuan(htotal)));
+        for (var mi = 0; mi < shownModels; mi++) {
+          var hm = hmodels[mi];
+          var yy = MT + 27 + mi * 14;
+          lines.push(react.createElement('text', { key: 'n' + mi, x: tipX + 8, y: yy, fontSize: 9, fill: colorOf(hm.m) }, hm.m));
+          lines.push(react.createElement('text', { key: 'v' + mi, x: tipX + 146, y: yy, fontSize: 9, fill: 'var(--dsw-alias-label-secondary)', textAnchor: 'end' }, fmtYuan(hm.v)));
+        }
+        if (hmodels.length > 6) lines.push(react.createElement('text', { key: 'more', x: tipX + 8, y: MT + 27 + shownModels * 14, fontSize: 9, fill: 'var(--dsw-alias-label-tertiary)' }, '等 ' + hmodels.length + ' 个模型'));
+        tip = react.createElement('g', null,
+          react.createElement('rect', { x: tipX, y: MT, width: 158, height: tipH, rx: 6, fill: 'var(--dsw-alias-bg-overlay)', stroke: 'var(--dsw-alias-border-l1)', opacity: 0.96 }),
+          lines);
+      }
       return react.createElement('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', style: { display: 'block', marginTop: 4 } },
         react.createElement('line', { x1: ML, y1: H - MB, x2: W - MR, y2: H - MB, stroke: 'var(--dsw-alias-border-l1)' }),
         react.createElement('text', { x: W - MR, y: MT + 6, fontSize: 9, fill: 'var(--dsw-alias-label-tertiary)', textAnchor: 'end' }, '¥' + fmtRate(max)),
-        bars);
+        bars,
+        tip);
     }
 
     // 饼图:各模型花费占比(人民币)
