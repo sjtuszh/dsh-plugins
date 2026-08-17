@@ -50,6 +50,9 @@ window.__ModuleLoader__.load({
         return Promise.resolve(
           Object.values(list.byId)
             .filter(function (s) { return !s.blank && s.id !== current; })
+            // 禁止把任何子代理（含 XChat 派生子代理）列为 @ 候选：跨会话知识桥
+            // 的目标是真实会话；子代理既不是知识源，选中还会引发链式派生。
+            .filter(function (s) { return s.origin !== "subagent"; })
             .filter(function (s) {
               return (s.displayTitle || "").toLowerCase().includes(q) ||
                      (s.cwd || "").toLowerCase().includes(q) ||
