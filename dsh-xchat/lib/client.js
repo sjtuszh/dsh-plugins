@@ -365,7 +365,10 @@ window.__ModuleLoader__.load({
           var remote = props.remote;
           var stState = react.useState({ loading: true, error: null, status: null });
           var st = stState[0], setSt = stState[1];
-          var draftState = react.useState(null);
+          // draft 必须永不为 null：渲染分支会访问 draft[key]，若 status 先就绪而
+          // draft 仍为 null 时渲染会抛 TypeError，被 slot 边界捕获并 abdicate
+          // （entry 退休 → 设置页空白且无报错）。用默认值初始化，getStatus 后覆盖。
+          var draftState = react.useState({ enabled: true, menuEnabled: true, autoCleanup: true, waitTimeoutMs: 240000, modelMode: "auto", modelProvider: "", modelId: "" });
           var draft = draftState[0], setDraft = draftState[1];
           var savedState = react.useState(null);
           var saved = savedState[0], setSaved = savedState[1];
