@@ -7,7 +7,10 @@ DSH 插件：实现**对话间的相互通信**。在一个对话中需要另一
 | 组件 | 位置 | 职责 |
 |---|---|---|
 | 静态 client 包 | `lib/client.js` + `cordis.patch.yml` | `@` 会话候选菜单（任意位置触发、主题自适应）、拖拽会话到聊天窗 |
-| Agent 预设「XChat 创造模式」 | `preset/` 目录 | `xchat_query` 工具（start/ask/stop）+ 创造模式全部权限（cordis_inspect / define / run、preset 创作 skill） |
+| 静态 host 插件 | `lib/host.js`（profile 层，`inject` 声明硬依赖） | `xchat_query` 工具（start/ask/stop），**全局注册，任意会话可用**（无需选择特定预设） |
+| Agent 预设「XChat 创造模式」（可选） | `preset/` 目录 | 创造模式全部权限（cordis_inspect / define / run、preset 创作 skill）+ XChat 路由提示 |
+
+> 为什么 `xchat_query` 能放在 profile 层而不是必须预设：Cordis 插件激活是**服务可用性驱动**的。`lib/host.js` 在 `inject` 中声明 `tools/subagents/sessionQuery/agents/agentPresets` 硬依赖，插件会等待这些服务就绪后再 `apply`，因此 profile 层即可拿到它们并向全局 `tools` 注册（同 `dsh-mcp-client` 的做法）。
 
 ## 功能
 
@@ -17,7 +20,7 @@ DSH 插件：实现**对话间的相互通信**。在一个对话中需要另一
 - 选中插入 `@会话名 `，Esc 关闭，点击外部关闭
 - 从侧边栏**拖拽会话**到聊天窗自动变成 `@会话名 `
 
-### 2. `xchat_query` 工具（预设层）
+### 2. `xchat_query` 工具（profile 全局）
 | action | 行为 |
 |---|---|
 | `start` | 解析 `@会话名`/`\会话名` → 目标会话不 live 时 `agents.resume` 恢复 → `subagents.startContinuable({ provider: 'fork' })` 拉起继承目标会话完整记忆的子代理 → 等待其整理回复 |
@@ -59,14 +62,16 @@ DSH 插件：实现**对话间的相互通信**。在一个对话中需要另一
 
 3. 重启 `dsh web`。
 
-### B. Agent 预设（`xchat_query` 工具 + 创造模式权限）
+### B. Agent 预设（可选：创造模式权限 + XChat 路由）
+
+> `xchat_query` 工具由 A 步的 profile 插件全局提供，**任意预设的会话都可用**，本步只附加"创造模式"权限。
 
 1. 把本包 `preset/` 目录整体复制到用户预设根：
    ```powershell
    Copy-Item -Recurse C:\Users\22320\Desktop\dsh_WS\dsh-plugins\dsh-xchat\preset C:\Users\22320\.dsh\.agent-presets\xchat-pro
    ```
 
-2. 新建会话，选择预设 **XChat 创造模式**（id: `xchat-pro`）。
+2. 新建会话，选择预设 **XChat 创造模式**（id: `xchat-pro`）即获得创造模式能力。
 
 ## 使用
 
@@ -82,6 +87,5 @@ DSH 插件：实现**对话间的相互通信**。在一个对话中需要另一
 ## 源码
 
 - `lib/client.js`：`@` 菜单（候选过滤子代理、拖拽、自绘菜单）
-- `lib/host.js`：no-op（工具已迁至预设层）
-- `preset/agent.cordis.yml`：预设组合（创造模式 + `tool-xchat` + 路由 persona）
-- `preset/dsh-xchat-tool/index.js`：`xchat_query` 实现
+- `lib/host.js`：`xchat_query` 实现（profile 全局注册；inject 硬依赖等待服务就绪）
+- `preset/agent.cordis.yml`：可选预设（创造模式能力 + XChat 路由 persona）

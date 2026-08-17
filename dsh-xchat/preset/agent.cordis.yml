@@ -187,9 +187,6 @@
         toolName: subagent_fork
         backgroundMode: continuable
 
-    - id: tool-xchat
-      name: ./dsh-xchat-tool/index.js
-
     # Product providers are host-plane singletons. Copy this preset, then
     # remove `disabled` from either ordinary tool row to expose that product
     # only to agents composed from the copy.
