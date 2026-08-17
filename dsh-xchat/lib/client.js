@@ -382,7 +382,9 @@ window.__ModuleLoader__.load({
                 setSt({ loading: false, error: null, status: res });
                 setDraft({ enabled: !!res.config.enabled, menuEnabled: !!res.config.menuEnabled, autoCleanup: !!res.config.autoCleanup, waitTimeoutMs: res.config.waitTimeoutMs, modelMode: res.config.modelMode || "auto", modelProvider: res.config.modelProvider || "", modelId: res.config.modelId || "" });
               } else {
-                setSt({ loading: false, error: (res && res.error) || "读取失败", status: null });
+                // error 可能是 {code,message,details} 错误对象：必须 String()，
+                // 否则把对象当 React child 渲染 → React #31 → slot abdicate → 空白。
+                setSt({ loading: false, error: String((res && res.error) || "读取失败"), status: null });
               }
             }).catch(function (e) {
               setSt({ loading: false, error: String(e && e.message ? e.message : e), status: null });

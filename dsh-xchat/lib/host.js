@@ -6,7 +6,7 @@
 // 可用性驱动的——插件会等这些服务就绪后再 apply，因此在 profile 层即可
 // 拿到它们并向全局 tools 注册（对任意会话可见，无需选择特定预设）。
 // ============================================================================
-import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import { join } from 'node:path'
 import { readFileSync, writeFileSync } from 'node:fs'
 
@@ -267,7 +267,26 @@ export default {
         return { ok: true, config: { ...config } }
       }
     }
-    new XChatService(ctx, 'xchat')
+    // 手写 ESM 无法用 @Remote 装饰器（那是 TS 编译注入 markers 的）。
+    // 这里模拟装饰器：构造 decorator context 调用 Remote() 并触发 initializer，
+    // 使网关 remoteMethods() 能枚举到这些方法——否则 host 无 xchat/* 端点，
+    // client 的 $mount 调用会 404。
+    function markRemoteMethods(instance, methodNames) {
+      for (const name of methodNames) {
+        const initializers = []
+        const context = {
+          kind: 'method',
+          name: String(name),
+          private: false,
+          static: false,
+          addInitializer(fn) { initializers.push(fn) }
+        }
+        Remote(name)(undefined, context)
+        for (const fn of initializers) fn.call(instance)
+      }
+    }
+    const xchatService = new XChatService(ctx, 'xchat')
+    markRemoteMethods(xchatService, ['getStatus', 'getConfig', 'listModels', 'setConfig'])
 
     disposeTool = ctx.tools.register({
       name: 'xchat_query',
