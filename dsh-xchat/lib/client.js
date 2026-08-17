@@ -104,6 +104,8 @@ window.__ModuleLoader__.load({
 
     async function apply(ctx) {
       var unmount = await ctx.remote.$mount(TYPERT_REMOTE);
+      // $mount 后一次性取 remote 代理（供设置面板使用），避免每次渲染再查。
+      var remoteXchat = ctx.get("remote.xchat");
       var slots = ctx.get("slots");
       var sessions = ctx.get("sessions");
       var inputTriggers = ctx.get("inputTriggers");
@@ -371,7 +373,7 @@ window.__ModuleLoader__.load({
           var models = modelsState[0], setModels = modelsState[1];
 
           react.useEffect(function () {
-            if (!remote) { setSt({ loading: false, error: "remote 不可用（host 半未加载？）", status: null }); return; }
+            if (!remote) { setSt({ loading: false, error: "未连接到 host 服务（remote.xchat 不可用）", status: null }); return; }
             remote.getStatus().then(function (res) {
               if (res && res.ok) {
                 setSt({ loading: false, error: null, status: res });
@@ -406,7 +408,7 @@ window.__ModuleLoader__.load({
 
           var body;
           if (st.loading) {
-            body = react.createElement("div", { className: "xchat-set" }, "加载中…");
+            body = react.createElement("div", { className: "xchat-set" }, "正在读取 XChat 状态…");
           } else if (st.error) {
             body = react.createElement("div", { className: "xchat-set" },
               react.createElement("div", { className: "xchat-set-err" }, st.error));
@@ -489,7 +491,7 @@ window.__ModuleLoader__.load({
         slots.inject("settings.section", function () {
           return slots.register(
             { name: "settings.section", id: "xchat", order: 25, label: "XChat" },
-            function (props) { return react.createElement(XChatSettings, { remote: ctx.get("remote.xchat"), close: props.close }); }
+            function (props) { return react.createElement(XChatSettings, { remote: remoteXchat, close: props.close }); }
           );
         });
       }
