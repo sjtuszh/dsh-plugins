@@ -378,9 +378,11 @@ window.__ModuleLoader__.load({
           react.useEffect(function () {
             if (!remote) { setSt({ loading: false, error: "未连接到 host 服务（remote.xchat 不可用）", status: null }); return; }
             remote.getStatus().then(function (res) {
+              try { console.error("xchat getStatus RES:", JSON.stringify(res)); } catch (ce) { /* ignore */ }
               if (res && res.ok) {
                 setSt({ loading: false, error: null, status: res });
-                setDraft({ enabled: !!res.config.enabled, menuEnabled: !!res.config.menuEnabled, autoCleanup: !!res.config.autoCleanup, waitTimeoutMs: res.config.waitTimeoutMs, modelMode: res.config.modelMode || "auto", modelProvider: res.config.modelProvider || "", modelId: res.config.modelId || "" });
+                var cfg = (res && res.config) || {};
+                setDraft({ enabled: !!cfg.enabled, menuEnabled: !!cfg.menuEnabled, autoCleanup: !!cfg.autoCleanup, waitTimeoutMs: cfg.waitTimeoutMs, modelMode: cfg.modelMode || "auto", modelProvider: cfg.modelProvider || "", modelId: cfg.modelId || "" });
               } else {
                 // error 可能是 {code,message,details} 错误对象：必须 String()，
                 // 否则把对象当 React child 渲染 → React #31 → slot abdicate → 空白。
