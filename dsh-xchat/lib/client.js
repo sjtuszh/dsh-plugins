@@ -26,6 +26,16 @@ window.__ModuleLoader__.load({
 .xchat-atmenu-label{flex:none;font-weight:500}
 .xchat-atmenu-desc{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary,#888)}
 .xchat-atmenu-muted{padding:8px 10px;color:var(--dsw-alias-label-tertiary,#888)}
+.xchat-set{padding:16px;display:flex;flex-direction:column;gap:14px;font-size:13px;color:var(--dsw-alias-label-primary,#222)}
+.xchat-set-title{font-size:14px;font-weight:600}
+.xchat-set-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.xchat-set-label{flex:1;color:var(--dsw-alias-label-primary,#222)}
+.xchat-set-desc{font-size:11px;color:var(--dsw-alias-label-tertiary,#888);margin-top:2px}
+.xchat-set-input{box-sizing:border-box;width:140px;padding:5px 8px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.3));border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#222);font-size:12px}
+.xchat-set-btn{padding:6px 14px;border:none;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.15));color:var(--dsw-alias-label-primary,#222);cursor:pointer;font-size:12px}
+.xchat-set-btn:hover{background:var(--dsw-alias-bg-layer-2,rgba(128,128,128,.08))}
+.xchat-set-status{font-size:12px;color:var(--dsw-alias-label-secondary,#666);font-family:var(--dsw-font-mono,monospace)}
+.xchat-set-err{font-size:12px;color:#e5484d}
 `;
     var CSS_ID = "dsh-xchat/styles";
     if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(CSS_ID) + "]") === null) {
@@ -35,15 +45,18 @@ window.__ModuleLoader__.load({
       document.head.appendChild(tag);
     }
 
-    var inject = ["slots", "sessions", "inputTriggers"];
+    var inject = ["slots", "sessions", "inputTriggers", "remote", "remote.xchat"];
 
     function apply(ctx) {
       var slots = ctx.get("slots");
       var sessions = ctx.get("sessions");
       var inputTriggers = ctx.get("inputTriggers");
+      // 菜单开关：设置面板实时更新；false 时 @ 候选为空。
+      var menuEnabledRef = { current: true };
 
       function listRows(query) {
         if (!sessions) return Promise.resolve([]);
+        if (menuEnabledRef.current === false) return Promise.resolve([]);
         var list = sessions.list.getSnapshot();
         var current = list.current;
         var q = String(query || "").toLowerCase();
@@ -286,6 +299,99 @@ window.__ModuleLoader__.load({
           return slots.register(
             { name: "conversation.composer.dock", id: "xchat-at-menu", order: 1000, label: "xchat @ menu" },
             function () { return react.createElement(AtMenu); }
+          );
+        });
+
+        // ── 设置面板：原生设置界面新增「XChat」tab ─────────────────────────
+        function XChatSettings(props) {
+          var remote = props.remote;
+          var stState = react.useState({ loading: true, error: null, status: null });
+          var st = stState[0], setSt = stState[1];
+          var draftState = react.useState(null);
+          var draft = draftState[0], setDraft = draftState[1];
+          var savedState = react.useState(null);
+          var saved = savedState[0], setSaved = savedState[1];
+
+          react.useEffect(function () {
+            if (!remote) { setSt({ loading: false, error: "remote 不可用（host 半未加载？）", status: null }); return; }
+            remote.getStatus().then(function (res) {
+              if (res && res.ok) {
+                setSt({ loading: false, error: null, status: res });
+                setDraft({ enabled: !!res.config.enabled, menuEnabled: !!res.config.menuEnabled, autoCleanup: !!res.config.autoCleanup, waitTimeoutMs: res.config.waitTimeoutMs });
+              } else {
+                setSt({ loading: false, error: (res && res.error) || "读取失败", status: null });
+              }
+            }).catch(function (e) {
+              setSt({ loading: false, error: String(e && e.message ? e.message : e), status: null });
+            });
+          }, [remote]);
+
+          function save() {
+            if (!remote || !draft) return;
+            setSaved(null);
+            remote.setConfig({ config: draft }).then(function (res) {
+              if (res && res.ok) {
+                menuEnabledRef.current = res.config.menuEnabled;
+                setSt({ loading: false, error: null, status: res });
+                setSaved("已保存");
+              } else {
+                setSaved("保存失败: " + ((res && res.error) || "unknown"));
+              }
+            }).catch(function (e) {
+              setSaved("保存失败: " + String(e && e.message ? e.message : e));
+            });
+          }
+
+          var body;
+          if (st.loading) {
+            body = react.createElement("div", { className: "xchat-set" }, "加载中…");
+          } else if (st.error) {
+            body = react.createElement("div", { className: "xchat-set" },
+              react.createElement("div", { className: "xchat-set-err" }, st.error));
+          } else if (!st.status) {
+            body = react.createElement("div", { className: "xchat-set" }, "无状态");
+          } else {
+            var row = function (label, desc, control) {
+              return react.createElement("div", { className: "xchat-set-row" },
+                react.createElement("div", { className: "xchat-set-label" },
+                  label,
+                  desc ? react.createElement("div", { className: "xchat-set-desc" }, desc) : null
+                ),
+                control
+              );
+            };
+            var cb = function (key) {
+              return react.createElement("input", {
+                type: "checkbox",
+                checked: !!draft[key],
+                onChange: function (ev) { var d = Object.assign({}, draft); d[key] = ev.target.checked; setDraft(d); }
+              });
+            };
+            body = react.createElement("div", { className: "xchat-set" },
+              react.createElement("div", { className: "xchat-set-title" }, "跨会话知识桥（XChat）"),
+              react.createElement("div", { className: "xchat-set-status" },
+                "工具注册: " + (st.status.toolRegistered ? "✓" : "✗") + " · 活跃子代理: " + st.status.activeCount),
+              row("启用 xchat_query", "关闭后模型不再能调用跨会话查询工具", cb("enabled")),
+              row("@ 菜单", "关闭后 @ 候选列表为空（拖拽仍可用）", cb("menuEnabled")),
+              row("自动清理孤儿", "每次查询前清理遗留的 xchat:* 子代理（30 秒限流）", cb("autoCleanup")),
+              row("等待回复超时(ms)", "子代理回复的最大等待时间", react.createElement("input", {
+                type: "number",
+                className: "xchat-set-input",
+                value: draft.waitTimeoutMs,
+                onChange: function (ev) { var d = Object.assign({}, draft); d.waitTimeoutMs = Number(ev.target.value) || 240000; setDraft(d); }
+              })),
+              react.createElement("div", { className: "xchat-set-row" },
+                react.createElement("button", { className: "xchat-set-btn", onClick: save }, "保存"),
+                saved ? react.createElement("span", { className: "xchat-set-desc" }, saved) : null
+              )
+            );
+          }
+          return body;
+        }
+        slots.inject("settings.section", function () {
+          return slots.register(
+            { name: "settings.section", id: "xchat", order: 25, label: "XChat" },
+            function (props) { return react.createElement(XChatSettings, { remote: ctx.get("remote.xchat"), close: props.close }); }
           );
         });
       }

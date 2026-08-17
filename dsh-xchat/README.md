@@ -33,7 +33,12 @@ DSH 插件：实现**对话间的相互通信**。在一个对话中需要另一
 - 每次 start 前**全局限定清理孤儿**（30 秒限流）：进程重启后遗留的 `xchat:*` 子代理会被自动归档
 - 子代理创建后自动命名 `xchat:<目标名>`，便于识别与过滤
 
-### 3. 创造模式权限（随预设自带）
+### 3. 设置面板（原生设置界面新增「XChat」tab）
+- 设置 → XChat：显示工具注册状态与活跃子代理数
+- 可配置：`enabled`（xchat_query 开关）、`menuEnabled`（@ 菜单开关）、`autoCleanup`（孤儿自动清理）、`waitTimeoutMs`（等待回复超时）
+- 配置持久化到 `$DSH_HOME/xchat-config.json`，host 经 Typert remote（`xchat` 服务）读写
+
+### 4. 创造模式权限（随预设自带）
 - `cordis_inspect_list` / `cordis_inspect_query` / `cordis_inspect_self`：运行时检查
 - `cordis_define` / `cordis_run` / `cordis_stop` / `cordis_undefine`：动态插件实验
 - `editing-cordis-compositions` + `cordis-plugin-development` skill

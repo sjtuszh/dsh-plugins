@@ -6,6 +6,18 @@
 // 可用性驱动的——插件会等这些服务就绪后再 apply，因此在 profile 层即可
 // 拿到它们并向全局 tools 注册（对任意会话可见，无需选择特定预设）。
 // ============================================================================
+import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { join } from 'node:path'
+import { readFileSync, writeFileSync } from 'node:fs'
+
+// 可配置项默认值；设置面板（设置 → XChat）经 Typert remote 读写。
+const DEFAULTS = { enabled: true, menuEnabled: true, autoCleanup: true, waitTimeoutMs: 240000 }
+
+function configPath() {
+  const home = (typeof process !== 'undefined' && process.env && process.env.DSH_HOME) || ''
+  return home ? join(home, 'xchat-config.json') : ''
+}
+
 function textBlock(text) {
   return { type: 'text', text: String(text) }
 }
@@ -27,6 +39,20 @@ export default {
   name: 'dsh-xchat',
   inject: ['tools', 'subagents', 'sessionQuery', 'agents', 'agentPresets', 'timer'],
   apply(ctx) {
+    // 配置：内存默认值 + 启动时从 $DSH_HOME/xchat-config.json 加载，setConfig 写回。
+    const config = { ...DEFAULTS }
+    const CONFIG_PATH = configPath()
+    if (CONFIG_PATH) {
+      try {
+        const raw = readFileSync(CONFIG_PATH, 'utf8')
+        Object.assign(config, JSON.parse(raw))
+      } catch (e) { /* 无配置/损坏时用默认值 */ }
+    }
+    function persistConfig() {
+      if (!CONFIG_PATH) return
+      try { writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8') } catch (e) { /* ignore */ }
+    }
+    let disposeTool
     // 每个条目 = 一个调用方会话对目标会话的专用子代理：
     //   { childId, targetId, callerId, parentAgent, resumed, targetLabel }
     const active = []
@@ -199,7 +225,27 @@ export default {
       return { reply: '', done: false, timedOut: true }
     }
 
-    ctx.tools.register({
+    // 设置面板 RPC：状态 + 配置读写（Typert remote，client 经 ctx.remote.xchat 调用）。
+    class XChatService extends TypertRemoteService {
+      async getStatus() {
+        return { ok: true, toolRegistered: !!disposeTool, activeCount: active.length, config: { ...config } }
+      }
+      async getConfig() {
+        return { ok: true, config: { ...config } }
+      }
+      async setConfig(request) {
+        const next = request && typeof request.config === 'object' ? request.config : {}
+        if (typeof next.enabled === 'boolean') config.enabled = next.enabled
+        if (typeof next.menuEnabled === 'boolean') config.menuEnabled = next.menuEnabled
+        if (typeof next.autoCleanup === 'boolean') config.autoCleanup = next.autoCleanup
+        if (Number.isFinite(next.waitTimeoutMs) && next.waitTimeoutMs > 0) config.waitTimeoutMs = Math.round(next.waitTimeoutMs)
+        persistConfig()
+        return { ok: true, config: { ...config } }
+      }
+    }
+    new XChatService(ctx, 'xchat')
+
+    disposeTool = ctx.tools.register({
       name: 'xchat_query',
       description: '跨会话知识桥：在目标会话名下原生拉起一个继承其记忆的 fork 子代理，向它询问关键信息并等待回复。每个调用方会话对同一目标会话各分配一个同级专用子代理；可反复追问（ask）；用完必须结束（stop），stop 会打断并归档删除该子代理。用户通常以 @会话名 或 \\会话名 形式引用目标会话，把引用的名称作为 target 传入。',
       parameters: {
@@ -239,6 +285,7 @@ export default {
         const childIdArg = args.childId ? String(args.childId) : undefined
         const agent = exec.agent
         if (!agent) return { ok: false, note: '无调用代理' }
+        if (!config.enabled) return { ok: false, note: 'xchat_query 已在设置中禁用（设置 → XChat）' }
         const callerId = String(agent.id)
         // 只在本调用方名下定位（childId 精确优先，其次 callerId+targetId）。
         const findEntry = async () => {
@@ -258,7 +305,7 @@ export default {
             const existing = active.find((v) => v.callerId === callerId && v.targetId === resolved.id)
             if (existing) return { ok: true, childId: existing.childId, target, reply: '', note: '本会话对该目标已有活跃子代理，请直接 ask 追问' }
             // 清理遗留的 xchat 孤儿（含旧版链式留下的中间节点）。
-            await sweepAllOrphans()
+            if (config.autoCleanup) await sweepAllOrphans()
             const g = await getParentAgent(resolved.id, exec.signal)
             const promptText = [
               '你是从会话「' + target + '」派生的记忆子代理，你通过 fork 继承了该会话的完整对话历史。',
@@ -292,7 +339,7 @@ export default {
               }
             } catch (e) { /* 标题设置失败不影响主流程 */ }
             active.push({ childId: started.childId, targetId: resolved.id, callerId, parentAgent: g.agent, resumed: g.resumed, targetLabel: target })
-            const wait = await waitForReply(started.childId, exec.signal, 240000)
+            const wait = await waitForReply(started.childId, exec.signal, config.waitTimeoutMs)
             const reply = wait.reply || (await currentReply(started.childId))
             return { ok: true, childId: started.childId, target, reply, ...(wait.timedOut && !reply ? { note: '子代理已启动但 4 分钟内无文本回复，可 ask 追问' } : {}) }
           }
@@ -301,7 +348,7 @@ export default {
             if (!entry) return { ok: false, note: '本会话没有找到活跃子代理，请先用 start 创建' }
             if (!request) return { ok: false, note: 'ask 需要 request（追问内容）' }
             await ctx.subagents.followup(entry.parentAgent, entry.childId, [textBlock(request)], { source, signal: exec.signal })
-            const wait = await waitForReply(entry.childId, exec.signal, 240000)
+            const wait = await waitForReply(entry.childId, exec.signal, config.waitTimeoutMs)
             const reply = wait.reply || (await currentReply(entry.childId))
             return { ok: true, childId: entry.childId, target: entry.targetLabel || target, reply, ...(wait.timedOut && !reply ? { note: '4 分钟内无新增文本回复，可继续 ask 或 stop' } : {}) }
           }
