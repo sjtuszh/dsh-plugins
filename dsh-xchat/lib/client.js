@@ -378,15 +378,16 @@ window.__ModuleLoader__.load({
           react.useEffect(function () {
             if (!remote) { setSt({ loading: false, error: "未连接到 host 服务（remote.xchat 不可用）", status: null }); return; }
             remote.getStatus().then(function (res) {
-              try { console.error("xchat getStatus RES:", JSON.stringify(res)); } catch (ce) { /* ignore */ }
-              if (res && res.ok) {
-                setSt({ loading: false, error: null, status: res });
-                var cfg = (res && res.config) || {};
+              // 网关把业务结果包在 value 字段：{ ok, value: <业务结果> }
+              var payload = (res && res.value) || res;
+              if (payload && payload.ok) {
+                setSt({ loading: false, error: null, status: payload });
+                var cfg = payload.config || {};
                 setDraft({ enabled: !!cfg.enabled, menuEnabled: !!cfg.menuEnabled, autoCleanup: !!cfg.autoCleanup, waitTimeoutMs: cfg.waitTimeoutMs, modelMode: cfg.modelMode || "auto", modelProvider: cfg.modelProvider || "", modelId: cfg.modelId || "" });
               } else {
                 // error 可能是 {code,message,details} 错误对象：必须 String()，
                 // 否则把对象当 React child 渲染 → React #31 → slot abdicate → 空白。
-                setSt({ loading: false, error: String((res && res.error) || "读取失败"), status: null });
+                setSt({ loading: false, error: String((payload && payload.error) || "读取失败"), status: null });
               }
             }).catch(function (e) {
               setSt({ loading: false, error: String(e && e.message ? e.message : e), status: null });
@@ -394,7 +395,8 @@ window.__ModuleLoader__.load({
             });
             // 加载模型目录，供「指定模型」模式使用。
             remote.listModels().then(function (res) {
-              if (res && res.ok && Array.isArray(res.groups)) setModels(res.groups);
+              var payload = (res && res.value) || res;
+              if (payload && payload.ok && Array.isArray(payload.groups)) setModels(payload.groups);
             }).catch(function (e) {
               try { console.error("xchat settings listModels failed:", e); } catch (ce) { /* ignore */ }
             });
@@ -404,12 +406,13 @@ window.__ModuleLoader__.load({
             if (!remote || !draft) return;
             setSaved(null);
             remote.setConfig({ config: draft }).then(function (res) {
-              if (res && res.ok) {
-                menuEnabledRef.current = res.config.menuEnabled;
-                setSt({ loading: false, error: null, status: res });
+              var payload = (res && res.value) || res;
+              if (payload && payload.ok) {
+                menuEnabledRef.current = payload.config.menuEnabled;
+                setSt({ loading: false, error: null, status: payload });
                 setSaved("已保存");
               } else {
-                setSaved("保存失败: " + ((res && res.error) || "unknown"));
+                setSaved("保存失败: " + String((payload && payload.error) || "unknown"));
               }
             }).catch(function (e) {
               setSaved("保存失败: " + String(e && e.message ? e.message : e));
