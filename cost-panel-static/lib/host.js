@@ -10,11 +10,19 @@
 // 2) 全局统计:监听 session/event(进程内所有会话),按北京时间累计
 //    天/小时/模型花费(人民币),启动时回放已加载会话的历史事件。
 // 3) 投影检查点自动持久化,重启后从会话日志整体重放。
+// 4) DeepSeek API 余额:Host 侧读取 ~/.dsh/.credentials.yaml 的
+//    DEEPSEEK_API_KEY(不下发浏览器),每 60s 调官方 /user/balance,
+//    经投影 global.balance 推送展示。
 //
 // 已知差异(相对动态版):投影 apply 看不到 session header,
 // 分叉会话按全量计费,客户端不显示分叉徽章。
 // ============================================================================
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+
+const DSH_HOME = process.env.DSH_HOME || join(homedir(), '.dsh');
 const CREDIT_TO_RMB = 0.4;
 const NEW_PRICING_MS = Date.UTC(2026, 7, 17, 0, 0, 0) - 8 * 3600e3;
 const HISTORY_CAP = 500;
@@ -288,14 +296,50 @@ function makeSyncGlobal(sessions) {
   };
 }
 
+/** DeepSeek API 余额:Host 侧读取凭据并轮询官方接口,经投影 global.balance 下发。 */
+const BALANCE = { is_available: null, total: null, currency: null, ts: 0, error: null };
+function readDeepSeekApiKey() {
+  try {
+    const text = readFileSync(join(DSH_HOME, '.credentials.yaml'), 'utf8');
+    const m = text.match(/^\s*DEEPSEEK_API_KEY\s*:\s*["']?([^"'\r\n]+)["']?\s*$/m);
+    return m ? m[1].trim() : null;
+  } catch (e) {
+    return null;
+  }
+}
+async function refreshBalance() {
+  const key = readDeepSeekApiKey();
+  if (!key) { BALANCE.error = 'no-key'; return; }
+  try {
+    const res = await fetch('https://api.deepseek.com/user/balance', {
+      headers: { Authorization: 'Bearer ' + key },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) { BALANCE.error = 'http-' + res.status; return; }
+    const data = await res.json();
+    const info = data && Array.isArray(data.balance_infos) ? data.balance_infos[0] : null;
+    BALANCE.is_available = !!data.is_available;
+    BALANCE.total = info && typeof info.total_balance === 'string' ? Number(info.total_balance) : null;
+    BALANCE.currency = info ? info.currency : null;
+    BALANCE.ts = Date.now();
+    BALANCE.error = null;
+  } catch (e) {
+    BALANCE.error = String((e && e.message) || e);
+  }
+}
+
 export default {
   name: 'dsh-cost-panel',
-  inject: ['sessionProjections'],
+  inject: ['sessionProjections', 'timer'],
   apply(ctx) {
     // 全局统计:所有会话/工作区的调用累计,增量回填(含历史)
     const syncGlobal = makeSyncGlobal(ctx.get('sessions'));
     ctx.on('session/event', () => { syncGlobal(); });
     syncGlobal(); // 启动时回填当前已加载会话
+
+    // DeepSeek 余额:启动即拉取,之后每 60s 刷新
+    refreshBalance();
+    ctx.interval(() => { refreshBalance(); }, 60000);
 
     ctx.sessionProjections.register({
       key: 'costSnapshot',
@@ -347,6 +391,13 @@ export default {
             statsMonth: global.statsMonth,
             label: { today: todayKey, month: monthPrefix },
             forks: GLOBAL.forks,
+            balance: {
+              is_available: BALANCE.is_available,
+              total: BALANCE.total,
+              currency: BALANCE.currency,
+              ts: BALANCE.ts,
+              error: BALANCE.error,
+            },
           },
           prices: {
             creditToRmb: CREDIT_TO_RMB,

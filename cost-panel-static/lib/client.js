@@ -403,12 +403,17 @@ window.__ModuleLoader__.load({
       var renderGlobalStats = function () {
         if (!proj || !proj.global) return react.createElement('div', { className: 'dsc-empty' }, '统计加载中…(需重启 dsh web 后生效)');
         var g = proj.global;
+        var bal = g.balance;
         var label = g.label || { today: '', month: '' };
         var data = period === 'today'
           ? (g.statsToday || { total: 0, calls: 0, byHour: {}, byModel: {} })
           : (g.statsMonth || { total: 0, calls: 0, byDay: {}, byModel: {} });
         var title = period === 'today' ? '今日 (' + label.today + ')' : '本月 (' + label.month + ')';
+        var balanceText = bal && bal.total !== null && bal.total !== undefined
+          ? fmtYuan(bal.total) + (bal.currency && bal.currency !== 'CNY' ? ' ' + bal.currency : '') + (bal.is_available === false ? ' (账户不可用)' : '')
+          : '—';
         return react.createElement('div', null,
+          react.createElement('div', { className: 'dsc-priceNote' }, 'DeepSeek API 余额: ' + balanceText + (bal && bal.ts ? ' · 更新于 ' + fmtTime(bal.ts) : '') + (bal && bal.error ? ' (获取失败)' : '')),
           react.createElement('div', { className: 'dsc-priceNote' }, '全部会话/工作区累计: ' + fmtYuan(g.totals.totalCostRmb) + ' · ' + g.totals.calls + ' 次调用(Relay 折算 ' + fmtYuan(g.totals.relayCostRmb) + ' + 官方 ' + fmtYuan(g.totals.legacyCostRmb) + ')'),
           react.createElement('div', { className: 'dsc-statsHead' },
             react.createElement('div', { className: 'dsc-tabs' },
