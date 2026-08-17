@@ -52,6 +52,51 @@ const organizerSaveResult$schema = z.union([
   }),
 ]);
 
+const organizerDeleteRequest$schema = z.object({
+  sessionId: z.string(),
+  title: z.string().optional(),
+});
+
+const organizerDeleteResult$schema = z.union([
+  z.object({
+    ok: z.literal(true),
+  }),
+  z.object({
+    ok: z.literal(false),
+    error: z.string(),
+  }),
+]);
+
+const organizerListDeletedResult$schema = z.union([
+  z.object({
+    ok: z.literal(true),
+    items: z.array(z.object({
+      sessionId: z.string(),
+      title: z.string(),
+      deletedAt: z.number(),
+    })),
+  }),
+  z.object({
+    ok: z.literal(false),
+    error: z.string(),
+  }),
+]);
+
+const organizerRestoreRequest$schema = z.object({
+  sessionId: z.string(),
+});
+
+const organizerRestoreResult$schema = z.union([
+  z.object({
+    ok: z.literal(true),
+    already: z.boolean().optional(),
+  }),
+  z.object({
+    ok: z.literal(false),
+    error: z.string(),
+  }),
+]);
+
 export const TYPERT = {
   package: 'dsh-session-organizer',
   face: 'host',
@@ -107,6 +152,106 @@ export const TYPERT = {
       },
       sourceLocation: { file: 'dsh-session-organizer/lib/host.js', line: 1, column: 1 },
     },
+    {
+      id: 'dsh-session-organizer#organizer/delete',
+      service: 'organizer',
+      namespace: 'organizer',
+      method: 'delete',
+      invocation: { kind: 'direct' },
+      parameters: [
+        {
+          name: 'request',
+          wire: 'request',
+          source: 'json',
+          codec: {
+            mode: 'strict',
+            typeSymbol: 'dsh-session-organizer/types#OrganizerDeleteRequest',
+            schema: organizerDeleteRequest$schema,
+          },
+        },
+      ],
+      result: {
+        mode: 'strict',
+        typeSymbol: 'dsh-session-organizer/types#OrganizerDeleteResult',
+        schema: organizerDeleteResult$schema,
+      },
+      sourceLocation: { file: 'dsh-session-organizer/lib/host.js', line: 1, column: 1 },
+    },
+    {
+      id: 'dsh-session-organizer#organizer/listDeleted',
+      service: 'organizer',
+      namespace: 'organizer',
+      method: 'listDeleted',
+      invocation: { kind: 'direct' },
+      parameters: [
+        {
+          name: 'request',
+          wire: 'request',
+          source: 'json',
+          codec: {
+            mode: 'strict',
+            typeSymbol: 'dsh-session-organizer/types#OrganizerListDeletedRequest',
+            schema: organizerLoadRequest$schema,
+          },
+        },
+      ],
+      result: {
+        mode: 'strict',
+        typeSymbol: 'dsh-session-organizer/types#OrganizerListDeletedResult',
+        schema: organizerListDeletedResult$schema,
+      },
+      sourceLocation: { file: 'dsh-session-organizer/lib/host.js', line: 1, column: 1 },
+    },
+    {
+      id: 'dsh-session-organizer#organizer/restoreArchived',
+      service: 'organizer',
+      namespace: 'organizer',
+      method: 'restoreArchived',
+      invocation: { kind: 'direct' },
+      parameters: [
+        {
+          name: 'request',
+          wire: 'request',
+          source: 'json',
+          codec: {
+            mode: 'strict',
+            typeSymbol: 'dsh-session-organizer/types#OrganizerRestoreRequest',
+            schema: organizerRestoreRequest$schema,
+          },
+        },
+      ],
+      result: {
+        mode: 'strict',
+        typeSymbol: 'dsh-session-organizer/types#OrganizerRestoreResult',
+        schema: organizerRestoreResult$schema,
+      },
+      sourceLocation: { file: 'dsh-session-organizer/lib/host.js', line: 1, column: 1 },
+    },
+    {
+      id: 'dsh-session-organizer#organizer/restoreDeleted',
+      service: 'organizer',
+      namespace: 'organizer',
+      method: 'restoreDeleted',
+      invocation: { kind: 'direct' },
+      parameters: [
+        {
+          name: 'request',
+          wire: 'request',
+          source: 'json',
+          codec: {
+            mode: 'strict',
+            typeSymbol: 'dsh-session-organizer/types#OrganizerRestoreRequest',
+            schema: organizerRestoreRequest$schema,
+          },
+        },
+      ],
+      result: {
+        mode: 'strict',
+        typeSymbol: 'dsh-session-organizer/types#OrganizerRestoreResult',
+        schema: organizerRestoreResult$schema,
+      },
+      sourceLocation: { file: 'dsh-session-organizer/lib/host.js', line: 1, column: 1 },
+    },
   ],
   model: {
     services: [
@@ -131,6 +276,34 @@ export const TYPERT = {
             signature: 'async save(request: OrganizerSaveRequest): Promise<OrganizerSaveResult>',
             summary: '写入持久化状态(分组 + 顺序)。',
             jsDoc: '/**\n * 写入持久化状态。\n * @param request - 待保存的 state。\n * @returns 成功或错误信息。\n */',
+          },
+          {
+            kind: 'method',
+            name: 'delete',
+            signature: 'async delete(request: OrganizerDeleteRequest): Promise<OrganizerDeleteResult>',
+            summary: '删除会话(持久化目录移入回收站,可还原)。',
+            jsDoc: '/**\n * 删除会话。\n * @param request - 目标 sessionId 与展示标题。\n * @returns 成功或错误信息。\n */',
+          },
+          {
+            kind: 'method',
+            name: 'listDeleted',
+            signature: 'async listDeleted(request: OrganizerLoadRequest): Promise<OrganizerListDeletedResult>',
+            summary: '列出已删除会话(供「已删除」tab)。',
+            jsDoc: '/**\n * 列出已删除会话。\n * @returns 已删除会话列表。\n */',
+          },
+          {
+            kind: 'method',
+            name: 'restoreArchived',
+            signature: 'async restoreArchived(request: OrganizerRestoreRequest): Promise<OrganizerRestoreResult>',
+            summary: '还原已归档会话(从 archivedSessionIds 移除)。',
+            jsDoc: '/**\n * 还原已归档会话。\n * @param request - 目标 sessionId。\n * @returns 成功或错误信息。\n */',
+          },
+          {
+            kind: 'method',
+            name: 'restoreDeleted',
+            signature: 'async restoreDeleted(request: OrganizerRestoreRequest): Promise<OrganizerRestoreResult>',
+            summary: '从回收站还原已删除会话。',
+            jsDoc: '/**\n * 从回收站还原已删除会话。\n * @param request - 目标 sessionId。\n * @returns 成功或错误信息。\n */',
           },
         ],
         types: [
@@ -157,6 +330,34 @@ export const TYPERT = {
           {
             name: 'OrganizerSaveResult',
             declaration: 'export type OrganizerSaveResult = { ok: true } | { ok: false; error: string };',
+          },
+          {
+            name: 'OrganizerDeleteRequest',
+            declaration: 'export interface OrganizerDeleteRequest {\n    readonly sessionId: string;\n}',
+          },
+          {
+            name: 'OrganizerDeleteResult',
+            declaration: 'export type OrganizerDeleteResult = { ok: true } | { ok: false; error: string };',
+          },
+          {
+            name: 'OrganizerDeletedItem',
+            declaration: 'export interface OrganizerDeletedItem {\n    readonly sessionId: string;\n    readonly title: string;\n    readonly deletedAt: number;\n}',
+          },
+          {
+            name: 'OrganizerListDeletedRequest',
+            declaration: 'export interface OrganizerListDeletedRequest {\n    readonly [key: string]: unknown;\n}',
+          },
+          {
+            name: 'OrganizerListDeletedResult',
+            declaration: 'export type OrganizerListDeletedResult = { ok: true; items: OrganizerDeletedItem[] } | { ok: false; error: string };',
+          },
+          {
+            name: 'OrganizerRestoreRequest',
+            declaration: 'export interface OrganizerRestoreRequest {\n    readonly sessionId: string;\n}',
+          },
+          {
+            name: 'OrganizerRestoreResult',
+            declaration: 'export type OrganizerRestoreResult = { ok: true; already?: boolean } | { ok: false; error: string };',
           },
         ],
       },

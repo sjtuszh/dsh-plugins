@@ -68,6 +68,14 @@ window.__ModuleLoader__.load({
 .sorg-btn.sorg-primary{background:var(--dsw-alias-state-business-primary);border-color:transparent;color:#fff}
 .sorg-btn:disabled{opacity:.5;cursor:default}
 .sorg-rail{width:100%;height:100%;align-items:center;justify-content:center;color:var(--dsw-alias-label-tertiary);display:flex;font-size:18px;cursor:pointer}
+.sorg-tabs{flex:none;display:flex;gap:2px;padding:0 8px 4px}
+.sorg-tab{flex:1;height:26px;border:none;border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-size:12px;font:inherit;display:flex;align-items:center;justify-content:center;gap:4px}
+.sorg-tab:hover{background:var(--dsw-alias-bg-layer-2)}
+.sorg-tab.sorg-tabOn{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);font-weight:600}
+.sorg-tabBadge{min-width:16px;height:16px;border-radius:8px;background:var(--dsw-alias-state-business-primary);color:#fff;font-size:10px;line-height:16px;text-align:center;padding:0 4px;font-variant-numeric:tabular-nums}
+.sorg-rtBtn{flex:none;height:22px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer;font-size:11px;font:inherit;padding:0 8px;white-space:nowrap}
+.sorg-rtBtn:hover{background:var(--dsw-alias-bg-layer-2)}
+.sorg-rtBtn:disabled{opacity:.5;cursor:default}
 `;
 
     var CSS_ID = "dsh-session-organizer/styles";
@@ -185,6 +193,14 @@ window.__ModuleLoader__.load({
         var drag = dragState[0], setDrag = dragState[1];
         var dragOverGroupState = react.useState(null); // group id highlight
         var dragOverGroup = dragOverGroupState[0], setDragOverGroup = dragOverGroupState[1];
+        // tab: 'main' 会话列表 | 'archived' 已归档 | 'deleted' 已删除
+        var tabState = react.useState('main');
+        var tab = tabState[0], setTab = tabState[1];
+        // 已删除会话列表(由 Host 的 deleted 记录提供)
+        var deletedState = react.useState([]);
+        var deletedItems = deletedState[0], setDeletedItems = deletedState[1];
+        var restoringState = react.useState(null); // 正在还原的 sessionId(禁用按钮)
+        var restoring = restoringState[0], setRestoring = restoringState[1];
 
         react.useEffect(function () {
           loadState().then(function () {
@@ -192,6 +208,19 @@ window.__ModuleLoader__.load({
             setOrder(persisted.order || {});
           });
         }, []);
+
+        // 切到「已删除」tab 时拉取一次列表
+        react.useEffect(function () {
+          if (tab !== 'deleted') return;
+          var p = null;
+          try { p = ctx.remote.organizer.listDeleted({}); } catch (e) { p = null; }
+          if (p && typeof p.then === 'function') {
+            p.then(function (r) {
+              var res = r && r.ok ? r.value : null;
+              if (res && res.ok && Array.isArray(res.items)) setDeletedItems(res.items);
+            }, function () {});
+          }
+        }, [tab]);
 
         // close menu when clicking anywhere outside it
         react.useEffect(function () {
@@ -523,6 +552,72 @@ window.__ModuleLoader__.load({
         function archiveSession(id) {
           if (workspacesService) workspacesService.archiveSession(id).then(function () {}, function (e) { console.error('archive failed', e); });
         }
+        // 删除会话:确认后调用 Host(回收站删除),成功后把会话从本地分组/顺序中移除。
+        // 列表本身会随 Host 对账消失;这里同步清理分组数据避免残留引用。
+        function deleteSession(id) {
+          setModal({ kind: 'session-delete', id: id, title: titleOf(id) });
+        }
+        function confirmDeleteSession() {
+          var sid = modal.id;
+          var title = modal.title || '';
+          setModal(null);
+          var p = null;
+          try { p = ctx.remote.organizer.delete({ sessionId: sid, title: title }); } catch (e) { p = null; }
+          if (p && typeof p.then === 'function') {
+            p.then(function (r) {
+              var res = r && r.ok ? r.value : null;
+              if (res && res.ok) {
+                // 从分组移除该会话,≤1 的分组自动解散;从 order 移除该 id
+                var nextGroups = groups.map(function (g) {
+                  return Object.assign({}, g, { sessionIds: g.sessionIds.filter(function (x) { return x !== sid; }) });
+                });
+                var nextOrder = Object.assign({}, order);
+                Object.keys(nextOrder).forEach(function (k) {
+                  nextOrder[k] = nextOrder[k].filter(function (x) { return x !== sid; });
+                });
+                var swept = sweepGroups(nextGroups, nextOrder);
+                persist(swept.groups, swept.order);
+              } else {
+                var errMsg = (res && res.error) || ((r && r.error && (r.error.message || r.error.code)) || '删除失败');
+                window.alert('删除失败：' + errMsg);
+              }
+            }, function () { window.alert('删除失败：请求出错'); });
+          }
+        }
+        // 还原已归档会话:调 Host 从 archivedSessionIds 移除
+        function restoreArchived(id) {
+          setRestoring(id);
+          var p = null;
+          try { p = ctx.remote.organizer.restoreArchived({ sessionId: id }); } catch (e) { p = null; }
+          if (p && typeof p.then === 'function') {
+            p.then(function (r) {
+              setRestoring(null);
+              var res = r && r.ok ? r.value : null;
+              if (!(res && res.ok)) {
+                var errMsg = (res && res.error) || ((r && r.error && (r.error.message || r.error.code)) || '还原失败');
+                window.alert('还原失败：' + errMsg);
+              }
+            }, function () { setRestoring(null); window.alert('还原失败：请求出错'); });
+          } else setRestoring(null);
+        }
+        // 还原已删除会话:调 Host 从回收站还原,成功后从列表移除
+        function restoreDeleted(id) {
+          setRestoring(id);
+          var p = null;
+          try { p = ctx.remote.organizer.restoreDeleted({ sessionId: id }); } catch (e) { p = null; }
+          if (p && typeof p.then === 'function') {
+            p.then(function (r) {
+              setRestoring(null);
+              var res = r && r.ok ? r.value : null;
+              if (res && res.ok) {
+                setDeletedItems(deletedItems.filter(function (x) { return x.sessionId !== id; }));
+              } else {
+                var errMsg = (res && res.error) || ((r && r.error && (r.error.message || r.error.code)) || '还原失败');
+                window.alert('还原失败：' + errMsg);
+              }
+            }, function () { setRestoring(null); window.alert('还原失败：请求出错'); });
+          } else setRestoring(null);
+        }
         function confirmRename() {
           var name = draft.trim();
           if (modal === null || name === '') return;
@@ -559,6 +654,7 @@ window.__ModuleLoader__.load({
               { id: 'rename', label: '重命名' },
               { id: 'fork', label: '复制会话' },
               { id: 'archive', label: '归档会话' },
+              { id: 'delete', label: '删除会话', danger: true },
             ],
           });
         }
@@ -572,6 +668,7 @@ window.__ModuleLoader__.load({
             if (id === 'rename') renameSession(m.id);
             if (id === 'fork') forkSession(m.id);
             if (id === 'archive') archiveSession(m.id);
+            if (id === 'delete') deleteSession(m.id);
           }
         }
 
@@ -688,29 +785,138 @@ window.__ModuleLoader__.load({
         var ungroupedKey = '';
         var ungroupedSessions = orderedIn(ungroupedKey, stray);
 
+        // ---- 已归档 tab:archivedSessionIds 里的会话,按归档顺序(注册表顺序)排列 ----
+        function archivedList() {
+          var ids = (wsState && wsState.archivedSessionIds) || [];
+          if (ids.length === 0) {
+            return react.createElement('div', { className: 'sorg-empty' }, '没有已归档的会话');
+          }
+          return react.createElement('div', { className: 'sorg-grp' },
+            ids.map(function (id) {
+              var s = byId[id];
+              var title = s ? (s.blank ? '新会话' : (s.displayTitle || id)) : id;
+              return react.createElement('div', {
+                key: id,
+                className: 'sorg-row sorg-title-sm',
+                onClick: function () { openSession(id); },
+                children: [
+                  react.createElement('span', { className: 'sorg-ico' }, '\u{1F4C1}'), // 📁 closed folder
+                  react.createElement('span', { className: 'sorg-name' }, title),
+                  react.createElement('span', { className: 'sorg-time' }, timeOf(id)),
+                  react.createElement('button', {
+                    type: 'button',
+                    className: 'sorg-rtBtn',
+                    disabled: restoring === id,
+                    onClick: function (e) { e.stopPropagation(); restoreArchived(id); },
+                  }, restoring === id ? '还原中…' : '还原'),
+                ],
+              });
+            }),
+          );
+        }
+
+        // ---- 已删除 tab:Host deleted 记录(标题与删除时间),可还原 ----
+        function deletedList() {
+          if (deletedItems.length === 0) {
+            return react.createElement('div', { className: 'sorg-empty' }, '没有已删除的会话');
+          }
+          function deletedTime(ts) {
+            if (!ts) return '';
+            var diff = Date.now() - ts;
+            var m = Math.floor(diff / 6e4);
+            if (m < 1) return '刚刚';
+            if (m < 60) return m + '分前';
+            if (m < 1440) return Math.floor(m / 60) + '时前';
+            return Math.floor(m / 1440) + '天前';
+          }
+          return react.createElement('div', { className: 'sorg-grp' },
+            deletedItems.map(function (it) {
+              return react.createElement('div', {
+                key: it.sessionId,
+                className: 'sorg-row sorg-title-sm',
+                onClick: function () { openSession(it.sessionId); },
+                children: [
+                  react.createElement('span', { className: 'sorg-ico' }, '\u{1F5D1}'), // 🗑️ wastebasket
+                  react.createElement('span', { className: 'sorg-name' }, it.title || it.sessionId),
+                  react.createElement('span', { className: 'sorg-time' }, deletedTime(it.deletedAt)),
+                  react.createElement('button', {
+                    type: 'button',
+                    className: 'sorg-rtBtn',
+                    disabled: restoring === it.sessionId,
+                    onClick: function (e) { e.stopPropagation(); restoreDeleted(it.sessionId); },
+                  }, restoring === it.sessionId ? '还原中…' : '还原'),
+                ],
+              });
+            }),
+          );
+        }
+
         if (!wide) {
           return react.createElement('div', { className: 'sorg-rail', onClick: function () { expandSidebar(); } }, WORKSPACE_ICON);
         }
 
-        var modalTitle = modal && (modal.kind === 'group-rename' ? '重命名分组' : modal.kind === 'group-delete' ? '删除分组' : '重命名会话');
+        var modalTitle = modal && (modal.kind === 'group-rename' ? '重命名分组'
+          : modal.kind === 'group-delete' ? '删除分组'
+          : modal.kind === 'session-delete' ? '删除会话'
+          : '重命名会话');
+        var modalConfirmText = modal && (modal.kind === 'group-delete' || modal.kind === 'session-delete') ? '删除' : '确定';
+        var modalConfirmDisabled = modal !== null && modal.kind !== 'group-delete' && modal.kind !== 'session-delete' && draft.trim() === '';
+        var modalChildren = null;
+        if (modal !== null && modal.kind === 'group-delete') {
+          modalChildren = react.createElement('div', null, '删除分组"' + (modal.name || '') + '"？其中的会话会回到工作区里。');
+        } else if (modal !== null && modal.kind === 'session-delete') {
+          modalChildren = react.createElement('div', null,
+            '删除会话"' + (modal.title || '') + '"？会话记录会移入系统回收站，可从回收站还原。');
+        } else {
+          modalChildren = react.createElement('input', {
+            className: 'sorg-input',
+            value: draft,
+            autoFocus: true,
+            onChange: function (e) { setDraft(e.target.value); },
+            onKeyDown: function (e) { if (e.key === 'Enter') confirmRename(); },
+          });
+        }
         return react.createElement('div', { className: 'sorg-root' },
           react.createElement('div', { className: 'sorg-head' },
             react.createElement('span', { className: 'sorg-title' }, '会话'),
             react.createElement('span', { className: 'sorg-hint' }, '拖拽排序 · 放会话中间建组'),
           ),
+          react.createElement('div', { className: 'sorg-tabs' },
+            react.createElement('button', {
+              type: 'button',
+              className: 'sorg-tab' + (tab === 'main' ? ' sorg-tabOn' : ''),
+              onClick: function () { setTab('main'); },
+            }, '会话'),
+            react.createElement('button', {
+              type: 'button',
+              className: 'sorg-tab' + (tab === 'archived' ? ' sorg-tabOn' : ''),
+              onClick: function () { setTab('archived'); },
+            }, '已归档',
+              archived.size > 0 && react.createElement('span', { className: 'sorg-tabBadge' }, String(archived.size))),
+            react.createElement('button', {
+              type: 'button',
+              className: 'sorg-tab' + (tab === 'deleted' ? ' sorg-tabOn' : ''),
+              onClick: function () { setTab('deleted'); },
+            }, '已删除',
+              deletedItems.length > 0 && react.createElement('span', { className: 'sorg-tabBadge' }, String(deletedItems.length))),
+          ),
           react.createElement('div', { className: 'sorg-list' },
-            (workspaces.length === 0 && ungroupedSessions.length === 0 && groups.length === 0)
-              && react.createElement('div', { className: 'sorg-empty' }, '暂无会话'),
-            workspaces.map(workspaceNode),
-            ungroupedSessions.length > 0 && react.createElement('div', { key: ungroupedKey, className: 'sorg-grp' },
-              react.createElement('div', { className: 'sorg-row', onClick: function () { toggleExpanded(ungroupedKey); } },
-                react.createElement('span', { className: 'sorg-caret' }, isExpanded(ungroupedKey) ? '\u25BE' : '\u25B8'),
-                react.createElement('span', { className: 'sorg-ico' }, WORKSPACE_ICON),
-                react.createElement('span', { className: 'sorg-name' }, '未分组'),
-                react.createElement('span', { className: 'sorg-time' }, String(ungroupedSessions.length)),
+            tab === 'main' && react.createElement(react.Fragment, null,
+              (workspaces.length === 0 && ungroupedSessions.length === 0 && groups.length === 0)
+                && react.createElement('div', { className: 'sorg-empty' }, '暂无会话'),
+              workspaces.map(workspaceNode),
+              ungroupedSessions.length > 0 && react.createElement('div', { key: ungroupedKey, className: 'sorg-grp' },
+                react.createElement('div', { className: 'sorg-row', onClick: function () { toggleExpanded(ungroupedKey); } },
+                  react.createElement('span', { className: 'sorg-caret' }, isExpanded(ungroupedKey) ? '\u25BE' : '\u25B8'),
+                  react.createElement('span', { className: 'sorg-ico' }, WORKSPACE_ICON),
+                  react.createElement('span', { className: 'sorg-name' }, '未分组'),
+                  react.createElement('span', { className: 'sorg-time' }, String(ungroupedSessions.length)),
+                ),
+                isExpanded(ungroupedKey) && react.createElement('div', { className: 'sorg-sub' }, ungroupedSessions.map(function (id) { return row(ungroupedKey, id); })),
               ),
-              isExpanded(ungroupedKey) && react.createElement('div', { className: 'sorg-sub' }, ungroupedSessions.map(function (id) { return row(ungroupedKey, id); })),
             ),
+            tab === 'archived' && react.createElement(archivedList, null),
+            tab === 'deleted' && react.createElement(deletedList, null),
           ),
           menu && react.createElement(Menu, { items: menu.items, onPick: onMenuPick, onClose: function () { setMenu(null); }, x: menu.x, y: menu.y }),
           modal && react.createElement(Modal, {
@@ -720,19 +926,11 @@ window.__ModuleLoader__.load({
               confirm: react.createElement('button', {
                 type: 'button',
                 className: 'sorg-btn sorg-primary',
-                disabled: modal.kind !== 'group-delete' && draft.trim() === '',
-                onClick: confirmRename,
-              }, modal.kind === 'group-delete' ? '删除' : '确定'),
+                disabled: modalConfirmDisabled,
+                onClick: modal.kind === 'session-delete' ? confirmDeleteSession : confirmRename,
+              }, modalConfirmText),
             },
-            children: modal.kind === 'group-delete'
-              ? react.createElement('div', null, '删除分组"' + (modal.name || '') + '"？其中的会话会回到工作区里。')
-              : react.createElement('input', {
-                  className: 'sorg-input',
-                  value: draft,
-                  autoFocus: true,
-                  onChange: function (e) { setDraft(e.target.value); },
-                  onKeyDown: function (e) { if (e.key === 'Enter') confirmRename(); },
-                }),
+            children: modalChildren,
           }),
         );
       }

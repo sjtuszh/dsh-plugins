@@ -55,6 +55,74 @@ window.__ModuleLoader__.load({
           result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerSaveResult", schema: stubSchema },
           sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
         },
+        {
+          id: "dsh-session-organizer#organizer/delete",
+          service: "organizer",
+          namespace: "organizer",
+          method: "delete",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerDeleteRequest", schema: stubSchema },
+            },
+          ],
+          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerDeleteResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+        },
+        {
+          id: "dsh-session-organizer#organizer/listDeleted",
+          service: "organizer",
+          namespace: "organizer",
+          method: "listDeleted",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerListDeletedRequest", schema: stubSchema },
+            },
+          ],
+          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerListDeletedResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+        },
+        {
+          id: "dsh-session-organizer#organizer/restoreArchived",
+          service: "organizer",
+          namespace: "organizer",
+          method: "restoreArchived",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerRestoreRequest", schema: stubSchema },
+            },
+          ],
+          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerRestoreResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+        },
+        {
+          id: "dsh-session-organizer#organizer/restoreDeleted",
+          service: "organizer",
+          namespace: "organizer",
+          method: "restoreDeleted",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerRestoreRequest", schema: stubSchema },
+            },
+          ],
+          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerRestoreResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+        },
       ],
     };
 
