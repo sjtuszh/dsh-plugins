@@ -11,21 +11,18 @@
 // 依赖:agents / subagents / sessionQuery / agentPresets / tools / timer
 // ============================================================================
 
+import { writeFileSync } from 'node:fs'
+
+const DIAG_PATH = 'C:\\Users\\22320\\Desktop\\dsh_WS\\xchat-diag.json'
+
 export default {
   name: 'dsh-xchat',
   inject: ['timer'],
   apply(ctx) {
-    // 自诊断：无论成败都写文件，便于定位静态挂载问题
+    // 自诊断：无论成败都写文件（原生 node:fs，不依赖 ctx.get('fs')）
     const diag = { ts: Date.now(), phase: 'start' }
     const writeDiag = () => {
-      try {
-        const fs = ctx.get('fs')
-        if (fs && typeof fs.writeText === 'function') {
-          fs.resolve('C:\\Users\\22320\\Desktop\\dsh_WS\\xchat-diag.json', { cwd: 'C:\\Users\\22320\\Desktop\\dsh_WS' })
-            .then((t) => fs.writeText(t, JSON.stringify(diag, null, 2)))
-            .catch(() => {})
-        }
-      } catch (e) { /* ignore */ }
+      try { writeFileSync(DIAG_PATH, JSON.stringify(diag, null, 2)) } catch (e) { /* ignore */ }
     }
     try {
       const agents = ctx.get('agents')
@@ -302,6 +299,27 @@ export default {
     } else {
       diag.registered = false
       diag.noToolsService = true
+    }
+
+    // apply 执行的可观察标记：注册一个最小投影单元（像 cost-panel 的 costSnapshot）
+    try {
+      const proj = ctx.get('sessionProjections')
+      if (proj && typeof proj.register === 'function') {
+        proj.register({
+          key: 'xchatProbe',
+          schema: { parse: (v) => v },
+          stateVersion: 1,
+          init: () => ({ ts: Date.now() }),
+          apply: (state) => state,
+          view: (state) => state
+        })
+        diag.projectionRegistered = true
+      } else {
+        diag.projectionRegistered = false
+        diag.projectionMissing = true
+      }
+    } catch (e) {
+      diag.projectionError = String(e && e.message ? e.message : e)
     }
 
     ctx.effect(() => () => {
