@@ -1,0 +1,6 @@
+# dsh-xchat bundle patch: mounts the xchat plugin into the profile host
+# composition so its host half can register `xchat_query` and reach agent/
+# subagent services, while the client half contributes the @-session UI.
+- insert:
+    - id: xchat
+      name: dsh-xchat
