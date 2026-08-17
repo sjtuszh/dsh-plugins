@@ -383,11 +383,14 @@ window.__ModuleLoader__.load({
               }
             }).catch(function (e) {
               setSt({ loading: false, error: String(e && e.message ? e.message : e), status: null });
+              try { console.error("xchat settings getStatus failed:", e); } catch (ce) { /* ignore */ }
             });
             // 加载模型目录，供「指定模型」模式使用。
             remote.listModels().then(function (res) {
               if (res && res.ok && Array.isArray(res.groups)) setModels(res.groups);
-            }).catch(function () { /* ignore */ });
+            }).catch(function (e) {
+              try { console.error("xchat settings listModels failed:", e); } catch (ce) { /* ignore */ }
+            });
           }, [remote]);
 
           function save() {
@@ -407,13 +410,15 @@ window.__ModuleLoader__.load({
           }
 
           var body;
+          var diag = react.createElement("div", { className: "xchat-set-desc" },
+            "remote: " + (remote ? "已连接" : "未连接") + " · 状态: " + (st.loading ? "读取中" : st.error ? "错误" : "就绪"));
           if (st.loading) {
-            body = react.createElement("div", { className: "xchat-set" }, "正在读取 XChat 状态…");
+            body = react.createElement("div", { className: "xchat-set" }, diag, "正在读取 XChat 状态…");
           } else if (st.error) {
-            body = react.createElement("div", { className: "xchat-set" },
+            body = react.createElement("div", { className: "xchat-set" }, diag,
               react.createElement("div", { className: "xchat-set-err" }, st.error));
           } else if (!st.status) {
-            body = react.createElement("div", { className: "xchat-set" }, "无状态");
+            body = react.createElement("div", { className: "xchat-set" }, diag, "无状态");
           } else {
             var row = function (label, desc, control) {
               return react.createElement("div", { className: "xchat-set-row" },
@@ -484,7 +489,8 @@ window.__ModuleLoader__.load({
               react.createElement("button", { className: "xchat-set-btn", onClick: save }, "保存"),
               saved ? react.createElement("span", { className: "xchat-set-desc" }, saved) : null
             ));
-            body = react.createElement("div", { className: "xchat-set" }, kids);
+            var kidsWithDiag = [diag].concat(kids);
+            body = react.createElement("div", { className: "xchat-set" }, kidsWithDiag);
           }
           return body;
         }

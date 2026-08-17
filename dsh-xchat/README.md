@@ -1,14 +1,13 @@
-# dsh-xchat — 跨会话知识桥（XChat 创造模式）
+# dsh-xchat — 跨会话知识桥
 
 DSH 插件：实现**对话间的相互通信**。在一个对话中需要另一个会话的知识时，在目标会话名下**原生拉起一个继承该会话完整记忆的 fork 子代理**，向它询问关键信息并取回回复；信息不够可反复追问；用完结束并归档删除子代理。
 
-本包是**双组件**结构：
+**单插件结构，无需任何预设**：
 
 | 组件 | 位置 | 职责 |
 |---|---|---|
-| 静态 client 包 | `lib/client.js` + `cordis.patch.yml` | `@` 会话候选菜单（任意位置触发、主题自适应）、拖拽会话到聊天窗 |
-| 静态 host 插件 | `lib/host.js`（profile 层，`inject` 声明硬依赖） | `xchat_query` 工具（start/ask/stop），**全局注册，任意会话可用**（无需选择特定预设） |
-| Agent 预设「XChat 创造模式」（可选） | `preset/` 目录 | 创造模式全部权限（cordis_inspect / define / run、preset 创作 skill）+ XChat 路由提示 |
+| 静态 client 包 | `lib/client.js` + `cordis.patch.yml` | `@` 会话候选菜单（任意位置触发、主题自适应）、拖拽会话到聊天窗、设置面板 |
+| 静态 host 插件 | `lib/host.js`（profile 层，`inject` 声明硬依赖） | `xchat_query` 工具（start/ask/stop），**全局注册，任意会话可用** |
 
 > 为什么 `xchat_query` 能放在 profile 层而不是必须预设：Cordis 插件激活是**服务可用性驱动**的。`lib/host.js` 在 `inject` 中声明 `tools/subagents/sessionQuery/agents/agentPresets` 硬依赖，插件会等待这些服务就绪后再 `apply`，因此 profile 层即可拿到它们并向全局 `tools` 注册（同 `dsh-mcp-client` 的做法）。
 
@@ -35,17 +34,10 @@ DSH 插件：实现**对话间的相互通信**。在一个对话中需要另一
 
 ### 3. 设置面板（原生设置界面新增「XChat」tab）
 - 设置 → XChat：显示工具注册状态与活跃子代理数
-- 可配置：`enabled`（xchat_query 开关）、`menuEnabled`（@ 菜单开关）、`autoCleanup`（孤儿自动清理）、`waitTimeoutMs`（等待回复超时）
+- 可配置：`enabled`（xchat_query 开关）、`menuEnabled`（@ 菜单开关）、`autoCleanup`（孤儿自动清理）、`waitTimeoutMs`（等待回复超时）、**子代理模型**（`auto` 继承目标会话 / `custom` 指定 provider+model）
 - 配置持久化到 `$DSH_HOME/xchat-config.json`，host 经 Typert remote（`xchat` 服务）读写
 
-### 4. 创造模式权限（随预设自带）
-- `cordis_inspect_list` / `cordis_inspect_query` / `cordis_inspect_self`：运行时检查
-- `cordis_define` / `cordis_run` / `cordis_stop` / `cordis_undefine`：动态插件实验
-- `editing-cordis-compositions` + `cordis-plugin-development` skill
-
 ## 安装
-
-### A. 客户端（`@` 菜单 + xchat_query 工具 + 设置面板）
 
 > **⚠️ 依赖安装（必须）**：host 半依赖 `@deepseek-ai/dsh-typert-protocol`。包目录必须能解析它，否则 `dsh web` 启动即崩（`ERR_MODULE_NOT_FOUND`）。
 > ```powershell
@@ -75,17 +67,6 @@ DSH 插件：实现**对话间的相互通信**。在一个对话中需要另一
 
 3. 重启 `dsh web`。设置面板在 **设置 → XChat**（client 改动刷新页面即可）。
 
-### B. Agent 预设（可选：创造模式权限 + XChat 路由）
-
-> `xchat_query` 工具由 A 步的 profile 插件全局提供，**任意预设的会话都可用**，本步只附加"创造模式"权限。
-
-1. 把本包 `preset/` 目录整体复制到用户预设根：
-   ```powershell
-   Copy-Item -Recurse C:\Users\22320\Desktop\dsh_WS\dsh-plugins\dsh-xchat\preset C:\Users\22320\.dsh\.agent-presets\xchat-pro
-   ```
-
-2. 新建会话，选择预设 **XChat 创造模式**（id: `xchat-pro`）即获得创造模式能力。
-
 ## 使用
 
 - 输入框任意位置输入 `@` → 选择会话 → 发送，例如：
@@ -94,11 +75,9 @@ DSH 插件：实现**对话间的相互通信**。在一个对话中需要另一
 
 ## 已知限制
 
-- **`tool-cordis` 每进程只能挂一个预设**：同一进程内请勿同时打开「创造模式」会话和「XChat 创造模式」会话（后者已包含创造模式全部权限，可完全替代前者）。
 - 子代理创建在**目标会话名下**（父 = 目标会话，继承其完整记忆）；stop 归档后可回收站还原。
 
 ## 源码
 
-- `lib/client.js`：`@` 菜单（候选过滤子代理、拖拽、自绘菜单）
-- `lib/host.js`：`xchat_query` 实现（profile 全局注册；inject 硬依赖等待服务就绪）
-- `preset/agent.cordis.yml`：可选预设（创造模式能力 + XChat 路由 persona）
+- `lib/client.js`：`@` 菜单（候选过滤子代理、拖拽、自绘菜单）、设置面板（`settings.section` 注册 + Typert remote 描述符 `$mount`）
+- `lib/host.js`：`xchat_query` 实现（profile 全局注册；inject 硬依赖等待服务就绪）、`xchat` Typert 服务（getStatus/getConfig/listModels/setConfig）
