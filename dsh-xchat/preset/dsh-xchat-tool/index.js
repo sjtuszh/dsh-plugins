@@ -53,6 +53,26 @@ export default {
       } catch (e) { /* ignore */ }
     }
 
+    // A（调用方）会话关闭时，自动清理它发起的所有 XChat 子代理（用完即删的兜底：
+    // 即使模型忘了调 stop，A 一关闭子代理立刻被打断并归档删除）。
+    ctx.on('agent/disposed', (payload) => {
+      const gone = payload && payload.agent
+      if (!gone) return
+      const goneId = String(gone.id)
+      const mine = active.filter((v) => v.callerId === goneId)
+      if (mine.length === 0) return
+      for (const entry of mine) {
+        try {
+          ctx.subagents.interrupt(entry.childId, { kind: 'user', parentSessionId: entry.targetId })
+        } catch (e) { /* ignore */ }
+        archiveSession(entry.childId).then(() => {
+          xchatChildren.delete(entry.childId)
+          const i = active.findIndex((v) => v.childId === entry.childId)
+          if (i >= 0) active.splice(i, 1)
+        }).catch(() => { /* ignore */ })
+      }
+    })
+
     // 清理所有目标会话名下遗留的 xchat:* 孤儿（进程重启后 active 丢失，以及
     // 旧版链式留下的中间节点）。只归档不在当前 active 里的，绝不动正在使用的。
     // 全局限定 + 30 秒限流，避免每次 start 都全表扫描。
