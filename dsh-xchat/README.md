@@ -45,7 +45,15 @@ DSH 插件：实现**对话间的相互通信**。在一个对话中需要另一
 
 ## 安装
 
-### A. 客户端（`@` 菜单）
+### A. 客户端（`@` 菜单 + xchat_query 工具 + 设置面板）
+
+> **⚠️ 依赖安装（必须）**：host 半依赖 `@deepseek-ai/dsh-typert-protocol`。包目录必须能解析它，否则 `dsh web` 启动即崩（`ERR_MODULE_NOT_FOUND`）。
+> ```powershell
+> cd C:\Users\22320\Desktop\dsh_WS\dsh-plugins\dsh-xchat
+> npm install          # 生成 node_modules（含 @deepseek-ai/dsh-typert-protocol）
+> ```
+> - link 部署：依赖从**包目录**的 node_modules 解析 → 必须先 `npm install`。
+> - 复制部署：把包目录（**连同 node_modules**）复制到 profile node_modules。
 
 1. 安装包到 profile：
    ```powershell
@@ -65,7 +73,7 @@ DSH 插件：实现**对话间的相互通信**。在一个对话中需要另一
          name: dsh-xchat
    ```
 
-3. 重启 `dsh web`。
+3. 重启 `dsh web`。设置面板在 **设置 → XChat**（client 改动刷新页面即可）。
 
 ### B. Agent 预设（可选：创造模式权限 + XChat 路由）
 

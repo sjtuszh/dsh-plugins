@@ -19,6 +19,60 @@ window.__ModuleLoader__.load({
     Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
     var react = require("react");
 
+    var stubSchema = { parse: function (value) { return value; } };
+    var TYPERT_REMOTE = {
+      package: "dsh-xchat",
+      descriptors: [
+        {
+          id: "dsh-xchat#xchat/getStatus",
+          service: "xchat",
+          namespace: "xchat",
+          method: "getStatus",
+          invocation: { kind: "direct" },
+          parameters: [],
+          result: { mode: "strict", typeSymbol: "dsh-xchat/types#XChatStatus", schema: stubSchema },
+          sourceLocation: { file: "dsh-xchat/lib/host.js", line: 1, column: 1 }
+        },
+        {
+          id: "dsh-xchat#xchat/getConfig",
+          service: "xchat",
+          namespace: "xchat",
+          method: "getConfig",
+          invocation: { kind: "direct" },
+          parameters: [],
+          result: { mode: "strict", typeSymbol: "dsh-xchat/types#XChatConfigResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-xchat/lib/host.js", line: 1, column: 1 }
+        },
+        {
+          id: "dsh-xchat#xchat/listModels",
+          service: "xchat",
+          namespace: "xchat",
+          method: "listModels",
+          invocation: { kind: "direct" },
+          parameters: [],
+          result: { mode: "strict", typeSymbol: "dsh-xchat/types#XChatModelsResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-xchat/lib/host.js", line: 1, column: 1 }
+        },
+        {
+          id: "dsh-xchat#xchat/setConfig",
+          service: "xchat",
+          namespace: "xchat",
+          method: "setConfig",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: { mode: "strict", typeSymbol: "dsh-xchat/types#XChatSetConfigRequest", schema: stubSchema }
+            }
+          ],
+          result: { mode: "strict", typeSymbol: "dsh-xchat/types#XChatConfigResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-xchat/lib/host.js", line: 1, column: 1 }
+        }
+      ]
+    };
+
     var CSS = `
 .xchat-atmenu{position:fixed;z-index:1000;background:var(--dsw-specific-menu,#ffffff);color:var(--dsw-alias-label-primary,#222);border:1px solid var(--dsw-alias-border-inverted,rgba(0,0,0,0.12));border-radius:12px;box-shadow:var(--dsw-shadow-lv3,0 8px 24px rgba(0,0,0,0.18));max-height:280px;overflow-y:auto;min-width:240px;max-width:480px;padding:4px;font-size:13px;line-height:20px;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}
 .xchat-atmenu-item{display:flex;width:100%;align-items:center;gap:8px;padding:8px 10px;background:none;border:none;border-radius:10px;cursor:pointer;text-align:left;font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary,#222)}
@@ -46,9 +100,10 @@ window.__ModuleLoader__.load({
       document.head.appendChild(tag);
     }
 
-    var inject = ["slots", "sessions", "inputTriggers", "remote", "remote.xchat"];
+    var inject = ["slots", "sessions", "inputTriggers", "remote"];
 
-    function apply(ctx) {
+    async function apply(ctx) {
+      var unmount = await ctx.remote.$mount(TYPERT_REMOTE);
       var slots = ctx.get("slots");
       var sessions = ctx.get("sessions");
       var inputTriggers = ctx.get("inputTriggers");
@@ -438,6 +493,7 @@ window.__ModuleLoader__.load({
           );
         });
       }
+      return unmount;
     }
 
     exports.apply = apply;

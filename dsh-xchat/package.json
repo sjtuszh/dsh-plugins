@@ -5,6 +5,9 @@
   "description": "跨会话知识桥（XChat 创造模式）：@ 任意位置触发会话候选（自绘菜单，跟随主题）+ 拖拽会话到聊天窗；xchat_query 工具（在目标会话名下拉起继承其记忆的 fork 子代理，跨会话询问/追问/结束），随预设附带创造模式全部权限（preset/ 目录）。",
   "type": "module",
   "main": "lib/host.js",
+  "dependencies": {
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.6"
+  },
   "exports": {
     ".": "./lib/host.js",
     "./client": "./lib/client.js",
