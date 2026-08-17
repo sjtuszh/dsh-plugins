@@ -259,6 +259,15 @@ window.__ModuleLoader__.load({
           if (s.blank && id !== current) return false;
           return true;
         }
+        // persistedAlive: 用于保存/迁移分组结构,不要把“当前不是 active 的 blank 会话”
+        // 当成丢失;否则只要新开会话导致 current 变化,已有分组就会被 sweep 掉。
+        function persistedAlive(id) {
+          var s = byId[id];
+          if (!s) return false;
+          if (s.origin === 'subagent') return false;
+          if (archived.has(id)) return false;
+          return true;
+        }
         function titleOf(id) {
           var s = byId[id];
           if (!s) return id;
@@ -371,7 +380,7 @@ window.__ModuleLoader__.load({
           var nextOrder = Object.assign({}, ord);
           for (var i = 0; i < gs.length; i++) {
             var g = gs[i];
-            var alive = g.sessionIds.filter(function (id) { return byId[id] !== undefined && visible(id); });
+            var alive = g.sessionIds.filter(function (id) { return byId[id] !== undefined && persistedAlive(id); });
             if (alive.length < 2) {
               delete nextOrder['g:' + g.id];
               continue;
@@ -436,12 +445,12 @@ window.__ModuleLoader__.load({
           function membersOf(key) {
             if (key.slice(0, 2) === 'g:') {
               var gg = nextGroups.find(function (gz) { return gz.id === key.slice(2); });
-              return gg ? gg.sessionIds.filter(function (id) { return byId[id] !== undefined && visible(id); }) : [];
+              return gg ? gg.sessionIds.filter(function (id) { return byId[id] !== undefined && persistedAlive(id); }) : [];
             }
             if (key.slice(0, 2) === 'w:') {
               var ww = workspaces.find(function (wx) { return wx.workspaceId === key.slice(2); });
               return ww ? ww.sessionIds.filter(function (id) {
-                return byId[id] !== undefined && visible(id) && !groupedMembers.has(id);
+                return byId[id] !== undefined && persistedAlive(id) && !groupedMembers.has(id);
               }) : [];
             }
             return (list && list.ids || []).filter(function (id) {
@@ -466,15 +475,15 @@ window.__ModuleLoader__.load({
             var members;
             if (key === '') {
               members = (list && list.ids || []).filter(function (id) {
-                return byId[id] !== undefined && visible(id) && accountOf[id] === undefined;
+                return byId[id] !== undefined && persistedAlive(id) && accountOf[id] === undefined;
               });
             } else if (key.slice(0, 2) === 'g:') {
               var gg = groups.find(function (gx) { return gx.id === key.slice(2); });
-              members = (gg ? gg.sessionIds : []).filter(function (id) { return byId[id] !== undefined && visible(id); });
+              members = (gg ? gg.sessionIds : []).filter(function (id) { return byId[id] !== undefined && persistedAlive(id); });
             } else {
               var ww = workspaces.find(function (wx) { return wx.workspaceId === key.slice(2); });
               members = (ww ? ww.sessionIds : []).filter(function (id) {
-                return byId[id] !== undefined && visible(id) && !groupedMembers.has(id);
+                return byId[id] !== undefined && persistedAlive(id) && !groupedMembers.has(id);
               });
             }
             var ids = order[key] !== undefined ? order[key].filter(function (id) { return members.indexOf(id) !== -1; }) : members;
