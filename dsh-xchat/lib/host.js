@@ -11,7 +11,8 @@ import { join } from 'node:path'
 import { readFileSync, writeFileSync } from 'node:fs'
 
 // 可配置项默认值；设置面板（设置 → XChat）经 Typert remote 读写。
-const DEFAULTS = { enabled: true, menuEnabled: true, autoCleanup: true, waitTimeoutMs: 240000 }
+// modelMode: 'auto' = 子代理继承目标会话的模型路由；'custom' = 用 modelProvider/modelId。
+const DEFAULTS = { enabled: true, menuEnabled: true, autoCleanup: true, waitTimeoutMs: 240000, modelMode: 'auto', modelProvider: null, modelId: null }
 
 function configPath() {
   const home = (typeof process !== 'undefined' && process.env && process.env.DSH_HOME) || ''
@@ -233,12 +234,35 @@ export default {
       async getConfig() {
         return { ok: true, config: { ...config } }
       }
+      async listModels() {
+        const llm = this.ctx.get('llm')
+        if (!llm) return { ok: false, error: 'llm 服务不可用' }
+        try {
+          const providers = await llm.listProviders()
+          const groups = []
+          for (const p of providers) {
+            let models = []
+            try { models = await llm.listModels(p.id) } catch (e) { /* 该 provider 无模型目录 */ }
+            groups.push({
+              id: String(p.id),
+              name: String((p && p.name) || p.id),
+              models: models.map(function (m) { return { id: String(m.id), name: String((m && m.name) || m.id) } })
+            })
+          }
+          return { ok: true, groups }
+        } catch (e) {
+          return { ok: false, error: e && e.message ? String(e.message) : String(e) }
+        }
+      }
       async setConfig(request) {
         const next = request && typeof request.config === 'object' ? request.config : {}
         if (typeof next.enabled === 'boolean') config.enabled = next.enabled
         if (typeof next.menuEnabled === 'boolean') config.menuEnabled = next.menuEnabled
         if (typeof next.autoCleanup === 'boolean') config.autoCleanup = next.autoCleanup
         if (Number.isFinite(next.waitTimeoutMs) && next.waitTimeoutMs > 0) config.waitTimeoutMs = Math.round(next.waitTimeoutMs)
+        if (next.modelMode === 'auto' || next.modelMode === 'custom') config.modelMode = next.modelMode
+        if (typeof next.modelProvider === 'string' && next.modelProvider) config.modelProvider = next.modelProvider
+        if (typeof next.modelId === 'string' && next.modelId) config.modelId = next.modelId
         persistConfig()
         return { ok: true, config: { ...config } }
       }
@@ -314,13 +338,15 @@ export default {
               '输出要求：把与该请求相关的关键信息组织成清晰、结构化、可直接引用的回复（关键文件路径、命令、结论、决策依据、数字等）；如果记忆中确实没有相关信息，请明确说明缺了什么。',
               '约束：你只负责信息提取与整理，不要执行文件或命令操作，不要调用工具。'
             ].join('\n')
+            // 模型路由：auto=继承目标会话；custom=设置面板指定的 provider/model。
+            const request = { parent: g.agent, prompt: [textBlock(promptText)] }
+            if (config.modelMode === 'custom' && config.modelProvider && config.modelId) {
+              request.agentOptions = { provider: config.modelProvider, model: config.modelId }
+            }
             const started = await ctx.subagents.startContinuable({
               provider: 'fork',
               label: 'xchat:' + target,
-              request: {
-                parent: g.agent,
-                prompt: [textBlock(promptText)]
-              },
+              request,
               signal: exec.signal
             })
             xchatChildren.add(started.childId)

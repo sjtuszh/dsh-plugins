@@ -32,6 +32,7 @@ window.__ModuleLoader__.load({
 .xchat-set-label{flex:1;color:var(--dsw-alias-label-primary,#222)}
 .xchat-set-desc{font-size:11px;color:var(--dsw-alias-label-tertiary,#888);margin-top:2px}
 .xchat-set-input{box-sizing:border-box;width:140px;padding:5px 8px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.3));border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#222);font-size:12px}
+.xchat-set-sel{box-sizing:border-box;width:220px;padding:5px 8px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.3));border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#222);font-size:12px}
 .xchat-set-btn{padding:6px 14px;border:none;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.15));color:var(--dsw-alias-label-primary,#222);cursor:pointer;font-size:12px}
 .xchat-set-btn:hover{background:var(--dsw-alias-bg-layer-2,rgba(128,128,128,.08))}
 .xchat-set-status{font-size:12px;color:var(--dsw-alias-label-secondary,#666);font-family:var(--dsw-font-mono,monospace)}
@@ -311,19 +312,25 @@ window.__ModuleLoader__.load({
           var draft = draftState[0], setDraft = draftState[1];
           var savedState = react.useState(null);
           var saved = savedState[0], setSaved = savedState[1];
+          var modelsState = react.useState([]);
+          var models = modelsState[0], setModels = modelsState[1];
 
           react.useEffect(function () {
             if (!remote) { setSt({ loading: false, error: "remote 不可用（host 半未加载？）", status: null }); return; }
             remote.getStatus().then(function (res) {
               if (res && res.ok) {
                 setSt({ loading: false, error: null, status: res });
-                setDraft({ enabled: !!res.config.enabled, menuEnabled: !!res.config.menuEnabled, autoCleanup: !!res.config.autoCleanup, waitTimeoutMs: res.config.waitTimeoutMs });
+                setDraft({ enabled: !!res.config.enabled, menuEnabled: !!res.config.menuEnabled, autoCleanup: !!res.config.autoCleanup, waitTimeoutMs: res.config.waitTimeoutMs, modelMode: res.config.modelMode || "auto", modelProvider: res.config.modelProvider || "", modelId: res.config.modelId || "" });
               } else {
                 setSt({ loading: false, error: (res && res.error) || "读取失败", status: null });
               }
             }).catch(function (e) {
               setSt({ loading: false, error: String(e && e.message ? e.message : e), status: null });
             });
+            // 加载模型目录，供「指定模型」模式使用。
+            remote.listModels().then(function (res) {
+              if (res && res.ok && Array.isArray(res.groups)) setModels(res.groups);
+            }).catch(function () { /* ignore */ });
           }, [remote]);
 
           function save() {
@@ -367,24 +374,60 @@ window.__ModuleLoader__.load({
                 onChange: function (ev) { var d = Object.assign({}, draft); d[key] = ev.target.checked; setDraft(d); }
               });
             };
-            body = react.createElement("div", { className: "xchat-set" },
+            var modeSel = react.createElement("select", {
+              className: "xchat-set-sel",
+              value: draft.modelMode,
+              onChange: function (ev) { var d = Object.assign({}, draft); d.modelMode = ev.target.value; setDraft(d); }
+            },
+              react.createElement("option", { value: "auto" }, "自动（继承目标会话的模型）"),
+              react.createElement("option", { value: "custom" }, "指定模型")
+            );
+            var kids = [
               react.createElement("div", { className: "xchat-set-title" }, "跨会话知识桥（XChat）"),
               react.createElement("div", { className: "xchat-set-status" },
                 "工具注册: " + (st.status.toolRegistered ? "✓" : "✗") + " · 活跃子代理: " + st.status.activeCount),
               row("启用 xchat_query", "关闭后模型不再能调用跨会话查询工具", cb("enabled")),
               row("@ 菜单", "关闭后 @ 候选列表为空（拖拽仍可用）", cb("menuEnabled")),
-              row("自动清理孤儿", "每次查询前清理遗留的 xchat:* 子代理（30 秒限流）", cb("autoCleanup")),
-              row("等待回复超时(ms)", "子代理回复的最大等待时间", react.createElement("input", {
-                type: "number",
-                className: "xchat-set-input",
-                value: draft.waitTimeoutMs,
-                onChange: function (ev) { var d = Object.assign({}, draft); d.waitTimeoutMs = Number(ev.target.value) || 240000; setDraft(d); }
-              })),
-              react.createElement("div", { className: "xchat-set-row" },
-                react.createElement("button", { className: "xchat-set-btn", onClick: save }, "保存"),
-                saved ? react.createElement("span", { className: "xchat-set-desc" }, saved) : null
-              )
-            );
+              row("自动清理孤儿", "每次查询前清理遗留的 xchat:* 子代理（30 秒限流）", cb("autoCleanup"))
+            ];
+            kids.push(row("子代理模型", "自动=继承目标会话的模型；指定=下面选择", modeSel));
+            if (draft.modelMode === "custom") {
+              var pSel = react.createElement("select", {
+                className: "xchat-set-sel",
+                value: draft.modelProvider,
+                onChange: function (ev) { var d = Object.assign({}, draft); d.modelProvider = ev.target.value; d.modelId = ""; setDraft(d); }
+              },
+                react.createElement("option", { value: "" }, "选择 Provider…"),
+                models.map(function (g) {
+                  return react.createElement("option", { key: g.id, value: g.id }, g.name);
+                })
+              );
+              var curGroup = null;
+              for (var gi = 0; gi < models.length; gi++) { if (models[gi].id === draft.modelProvider) { curGroup = models[gi]; break; } }
+              var mSel = react.createElement("select", {
+                className: "xchat-set-sel",
+                value: draft.modelId,
+                onChange: function (ev) { var d = Object.assign({}, draft); d.modelId = ev.target.value; setDraft(d); }
+              },
+                react.createElement("option", { value: "" }, "选择模型…"),
+                (curGroup ? curGroup.models : []).map(function (m) {
+                  return react.createElement("option", { key: m.id, value: m.id }, m.name);
+                })
+              );
+              kids.push(row("Provider", "指定模型所属的 provider", pSel));
+              kids.push(row("模型", "子代理回复使用的模型", mSel));
+            }
+            kids.push(row("等待回复超时(ms)", "子代理回复的最大等待时间", react.createElement("input", {
+              type: "number",
+              className: "xchat-set-input",
+              value: draft.waitTimeoutMs,
+              onChange: function (ev) { var d = Object.assign({}, draft); d.waitTimeoutMs = Number(ev.target.value) || 240000; setDraft(d); }
+            })));
+            kids.push(react.createElement("div", { className: "xchat-set-row" },
+              react.createElement("button", { className: "xchat-set-btn", onClick: save }, "保存"),
+              saved ? react.createElement("span", { className: "xchat-set-desc" }, saved) : null
+            ));
+            body = react.createElement("div", { className: "xchat-set" }, kids);
           }
           return body;
         }
