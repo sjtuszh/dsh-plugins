@@ -94,10 +94,11 @@ window.__ModuleLoader__.load({
     // 注:静态客户端 ctx 是代理,未声明即访问会抛错(§4.2)——服务必须按官方
     // ui-workspace 模式在 inject 里声明点号路径,再用属性访问 ctx.sessions /
     // ctx.workspaces(不能用 ctx.get('sessions'),那会触发守卫导致 apply 崩溃)。
-    // remote.organizer 由本包自己 $mount(单包合并:async apply 先 mount 再注册
-    // UI,官方 dsh-api-remotes 同款模式),不再 inject "remote.organizer" 硬依赖,
-    // 避免"等一个只有自己激活后才存在的东西"死锁。
-    var inject = ["slots", "remote", "sessions", "workspaces"];
+    // remote.organizer 是 gateway 安装的 Cordis 服务(remote.<namespace> 显式注册,
+    // 非 Proxy),必须 inject "remote.organizer" 才能被注入——单包自 $mount 与
+    // inject 不冲突:mount 注册 typert 描述符,remote.organizer 服务的安装由
+    // gateway 独立完成,Cordis inject 机制等待依赖就绪,不会自依赖死锁。
+    var inject = ["slots", "remote", "remote.organizer", "sessions", "workspaces"];
 
     // Typert remote 描述符(原 mount 包内联,单包合并后本包自带):
     // 与 dsh-organizer-sidebar/lib/typert.host.js 清单对应,客户端经它调用 Host。
