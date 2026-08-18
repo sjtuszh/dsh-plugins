@@ -94,10 +94,148 @@ window.__ModuleLoader__.load({
     // 注:静态客户端 ctx 是代理,未声明即访问会抛错(§4.2)——服务必须按官方
     // ui-workspace 模式在 inject 里声明点号路径,再用属性访问 ctx.sessions /
     // ctx.workspaces(不能用 ctx.get('sessions'),那会触发守卫导致 apply 崩溃)。
-    // remote.organizer 由 mount 包先挂出。
-    var inject = ["slots", "remote", "remote.organizer", "sessions", "workspaces"];
+    // remote.organizer 由本包自己 $mount(单包合并:async apply 先 mount 再注册
+    // UI,官方 dsh-api-remotes 同款模式),不再 inject "remote.organizer" 硬依赖,
+    // 避免"等一个只有自己激活后才存在的东西"死锁。
+    var inject = ["slots", "remote", "sessions", "workspaces"];
 
-    function apply(ctx) {
+    // Typert remote 描述符(原 mount 包内联,单包合并后本包自带):
+    // 与 dsh-session-organizer/lib/typert.host.js 清单对应,客户端经它调用 Host。
+    var stubSchema = { parse: function (v) { return v; } };
+    var TYPERT_REMOTE = {
+      package: "dsh-session-organizer",
+      descriptors: [
+        {
+          id: "dsh-session-organizer#organizer/load",
+          service: "organizer",
+          namespace: "organizer",
+          method: "load",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerLoadRequest", schema: stubSchema },
+            },
+          ],
+          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerLoadResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+        },
+        {
+          id: "dsh-session-organizer#organizer/save",
+          service: "organizer",
+          namespace: "organizer",
+          method: "save",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerSaveRequest", schema: stubSchema },
+            },
+          ],
+          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerSaveResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+        },
+        {
+          id: "dsh-session-organizer#organizer/delete",
+          service: "organizer",
+          namespace: "organizer",
+          method: "delete",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerDeleteRequest", schema: stubSchema },
+            },
+          ],
+          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerDeleteResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+        },
+        {
+          id: "dsh-session-organizer#organizer/deleteArchived",
+          service: "organizer",
+          namespace: "organizer",
+          method: "deleteArchived",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerDeleteArchivedRequest", schema: stubSchema },
+            },
+          ],
+          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerDeleteArchivedResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+        },
+        {
+          id: "dsh-session-organizer#organizer/listDeleted",
+          service: "organizer",
+          namespace: "organizer",
+          method: "listDeleted",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerListDeletedRequest", schema: stubSchema },
+            },
+          ],
+          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerListDeletedResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+        },
+        {
+          id: "dsh-session-organizer#organizer/restoreArchived",
+          service: "organizer",
+          namespace: "organizer",
+          method: "restoreArchived",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerRestoreRequest", schema: stubSchema },
+            },
+          ],
+          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerRestoreResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+        },
+        {
+          id: "dsh-session-organizer#organizer/restoreDeleted",
+          service: "organizer",
+          namespace: "organizer",
+          method: "restoreDeleted",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerRestoreRequest", schema: stubSchema },
+            },
+          ],
+          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerRestoreResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+        },
+      ],
+    };
+
+    async function apply(ctx) {
+      // 单包合并:先挂 Typert remote(官方 dsh-api-remotes 同款),
+      // 再注册 UI,保证 Browser 渲染时 ctx.remote.organizer 已就绪。
+      try {
+        await ctx.remote.$mount(TYPERT_REMOTE);
+      } catch (e) {
+        console.error('[dsh-session-organizer] remote $mount failed', e);
+        // 继续注册 UI;持久化调用会因 remote 缺失而优雅降级
+      }
       var sessionsService = ctx.sessions;
       var workspacesService = ctx.workspaces;
 

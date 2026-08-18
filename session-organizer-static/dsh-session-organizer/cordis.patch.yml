@@ -1,0 +1,6 @@
+# dsh-session-organizer bundle patch:应用时向 profile 组合树插入本插件行。
+# 通过 `dsh plugin --profile <name> add dsh-session-organizer` 安装后自动生效。
+# 单包方案(UI + Typert remote 挂载合并):一行即可,替换官方 sidebar.workspaces。
+- insert:
+    - id: session-organizer
+      name: dsh-session-organizer
