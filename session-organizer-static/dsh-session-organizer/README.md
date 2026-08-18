@@ -1,4 +1,4 @@
-# dsh-session-organizer
+# dsh-organizer-sidebar
 
 DeepSeek Harness（DSH）会话侧边栏组织器 —— **静态插件**，随 dsh profile 启动自动加载、无需批准。
 
@@ -7,14 +7,14 @@ DeepSeek Harness（DSH）会话侧边栏组织器 —— **静态插件**，随 
 ## 安装
 
 ```powershell
-dsh plugin --profile <name> add dsh-session-organizer
+dsh plugin --profile <name> add dsh-organizer-sidebar
 ```
 
 > ⚠️ pnpm v11 默认 `minimumReleaseAge: 10 天`：刚发布的包会被拒绝。刚发布后安装请**钉版本号**：
-> `dsh plugin --profile <name> add dsh-session-organizer@<version>`，
+> `dsh plugin --profile <name> add dsh-organizer-sidebar@<version>`，
 > 或给 profile 的 `pnpm-workspace.yaml` 加 `minimumReleaseAgeExclude`，或用 `npm install` 绕过。
 
-安装后重启 `dsh web` 生效。回滚：`dsh plugin --profile <name> rm dsh-session-organizer` 并重启。
+安装后重启 `dsh web` 生效。回滚：`dsh plugin --profile <name> rm dsh-organizer-sidebar` 并重启。
 
 ## 功能
 
@@ -33,7 +33,7 @@ dsh plugin --profile <name> add dsh-session-organizer
 | 面 | 实现 |
 |---|---|
 | Host | `SessionOrganizerService extends TypertRemoteService`（`organizer` 服务：load/save/delete/deleteArchived/listDeleted/restoreArchived/restoreDeleted）|
-| Client | UI bundle（priority -2 影子替换 `sidebar.workspaces`）+ 自 `$mount` Typert remote（async apply 先 mount 再注册 UI，官方 dsh-api-remotes 同款，无自依赖死锁）|
+| Client | UI bundle（priority -2 影子替换 `sidebar.workspaces`）+ 自 `$mount` Typert remote（fire-and-forget，`whenRemoteReady` 门控首次加载，无自依赖死锁）|
 | Typert | `lib/typert.host.js` 严格清单（7 个端点）|
 
 ## 开发 / 预检

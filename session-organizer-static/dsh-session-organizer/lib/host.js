@@ -266,7 +266,7 @@ class SessionOrganizerService extends TypertRemoteService {
 }
 
 export default {
-  name: 'dsh-session-organizer',
+  name: 'dsh-organizer-sidebar',
   apply(ctx) {
     new SessionOrganizerService(ctx, 'organizer');
   },

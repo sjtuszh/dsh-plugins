@@ -17,7 +17,7 @@
 // ============================================================================
 
 window.__ModuleLoader__.load({
-  id: "dsh-session-organizer",
+  id: "dsh-organizer-sidebar",
   factory: (require) => {
     var module = { exports: {} };
     var exports = module.exports;
@@ -82,10 +82,10 @@ window.__ModuleLoader__.load({
 .sorg-selRow{background:var(--dsw-alias-interactive-bg-hover)}
 `;
 
-    var CSS_ID = "dsh-session-organizer/styles";
+    var CSS_ID = "dsh-organizer-sidebar/styles";
     if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(CSS_ID) + "]") === null) {
       var tag = document.createElement("style");
-      tag.dataset.plugin = "dsh-session-organizer";
+      tag.dataset.plugin = "dsh-organizer-sidebar";
       tag.dataset.pluginCss = CSS_ID;
       tag.textContent = CSS;
       document.head.appendChild(tag);
@@ -100,13 +100,13 @@ window.__ModuleLoader__.load({
     var inject = ["slots", "remote", "sessions", "workspaces"];
 
     // Typert remote 描述符(原 mount 包内联,单包合并后本包自带):
-    // 与 dsh-session-organizer/lib/typert.host.js 清单对应,客户端经它调用 Host。
+    // 与 dsh-organizer-sidebar/lib/typert.host.js 清单对应,客户端经它调用 Host。
     var stubSchema = { parse: function (v) { return v; } };
     var TYPERT_REMOTE = {
-      package: "dsh-session-organizer",
+      package: "dsh-organizer-sidebar",
       descriptors: [
         {
-          id: "dsh-session-organizer#organizer/load",
+          id: "dsh-organizer-sidebar#organizer/load",
           service: "organizer",
           namespace: "organizer",
           method: "load",
@@ -116,14 +116,14 @@ window.__ModuleLoader__.load({
               name: "request",
               wire: "request",
               source: "json",
-              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerLoadRequest", schema: stubSchema },
+              codec: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerLoadRequest", schema: stubSchema },
             },
           ],
-          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerLoadResult", schema: stubSchema },
-          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+          result: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerLoadResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-organizer-sidebar/lib/host.js", line: 1, column: 1 },
         },
         {
-          id: "dsh-session-organizer#organizer/save",
+          id: "dsh-organizer-sidebar#organizer/save",
           service: "organizer",
           namespace: "organizer",
           method: "save",
@@ -133,14 +133,14 @@ window.__ModuleLoader__.load({
               name: "request",
               wire: "request",
               source: "json",
-              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerSaveRequest", schema: stubSchema },
+              codec: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerSaveRequest", schema: stubSchema },
             },
           ],
-          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerSaveResult", schema: stubSchema },
-          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+          result: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerSaveResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-organizer-sidebar/lib/host.js", line: 1, column: 1 },
         },
         {
-          id: "dsh-session-organizer#organizer/delete",
+          id: "dsh-organizer-sidebar#organizer/delete",
           service: "organizer",
           namespace: "organizer",
           method: "delete",
@@ -150,14 +150,14 @@ window.__ModuleLoader__.load({
               name: "request",
               wire: "request",
               source: "json",
-              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerDeleteRequest", schema: stubSchema },
+              codec: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerDeleteRequest", schema: stubSchema },
             },
           ],
-          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerDeleteResult", schema: stubSchema },
-          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+          result: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerDeleteResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-organizer-sidebar/lib/host.js", line: 1, column: 1 },
         },
         {
-          id: "dsh-session-organizer#organizer/deleteArchived",
+          id: "dsh-organizer-sidebar#organizer/deleteArchived",
           service: "organizer",
           namespace: "organizer",
           method: "deleteArchived",
@@ -167,14 +167,14 @@ window.__ModuleLoader__.load({
               name: "request",
               wire: "request",
               source: "json",
-              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerDeleteArchivedRequest", schema: stubSchema },
+              codec: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerDeleteArchivedRequest", schema: stubSchema },
             },
           ],
-          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerDeleteArchivedResult", schema: stubSchema },
-          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+          result: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerDeleteArchivedResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-organizer-sidebar/lib/host.js", line: 1, column: 1 },
         },
         {
-          id: "dsh-session-organizer#organizer/listDeleted",
+          id: "dsh-organizer-sidebar#organizer/listDeleted",
           service: "organizer",
           namespace: "organizer",
           method: "listDeleted",
@@ -184,14 +184,14 @@ window.__ModuleLoader__.load({
               name: "request",
               wire: "request",
               source: "json",
-              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerListDeletedRequest", schema: stubSchema },
+              codec: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerListDeletedRequest", schema: stubSchema },
             },
           ],
-          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerListDeletedResult", schema: stubSchema },
-          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+          result: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerListDeletedResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-organizer-sidebar/lib/host.js", line: 1, column: 1 },
         },
         {
-          id: "dsh-session-organizer#organizer/restoreArchived",
+          id: "dsh-organizer-sidebar#organizer/restoreArchived",
           service: "organizer",
           namespace: "organizer",
           method: "restoreArchived",
@@ -201,14 +201,14 @@ window.__ModuleLoader__.load({
               name: "request",
               wire: "request",
               source: "json",
-              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerRestoreRequest", schema: stubSchema },
+              codec: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerRestoreRequest", schema: stubSchema },
             },
           ],
-          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerRestoreResult", schema: stubSchema },
-          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+          result: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerRestoreResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-organizer-sidebar/lib/host.js", line: 1, column: 1 },
         },
         {
-          id: "dsh-session-organizer#organizer/restoreDeleted",
+          id: "dsh-organizer-sidebar#organizer/restoreDeleted",
           service: "organizer",
           namespace: "organizer",
           method: "restoreDeleted",
@@ -218,11 +218,11 @@ window.__ModuleLoader__.load({
               name: "request",
               wire: "request",
               source: "json",
-              codec: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerRestoreRequest", schema: stubSchema },
+              codec: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerRestoreRequest", schema: stubSchema },
             },
           ],
-          result: { mode: "strict", typeSymbol: "dsh-session-organizer/types#OrganizerRestoreResult", schema: stubSchema },
-          sourceLocation: { file: "dsh-session-organizer/lib/host.js", line: 1, column: 1 },
+          result: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerRestoreResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-organizer-sidebar/lib/host.js", line: 1, column: 1 },
         },
       ],
     };
@@ -245,7 +245,7 @@ window.__ModuleLoader__.load({
           remoteReadyWaiters.forEach(function (r) { r(); });
           remoteReadyWaiters = [];
         }, function (e) {
-          console.error('[dsh-session-organizer] remote $mount failed', e);
+          console.error('[dsh-organizer-sidebar] remote $mount failed', e);
           remoteReady = true; // 即使失败也放行,持久化调用会降级
           remoteReadyWaiters.forEach(function (r) { r(); });
           remoteReadyWaiters = [];

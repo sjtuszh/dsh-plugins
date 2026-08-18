@@ -2,7 +2,7 @@
 // 会话侧边栏组织器 — Typert Host 清单(静态版)
 // ----------------------------------------------------------------------------
 // 形状参照真实生成产物 @deepseek-ai/dsh-message-feedback/lib/typert.host.js:
-//   - package 必须等于包名 dsh-session-organizer;
+//   - package 必须等于包名 dsh-organizer-sidebar;
 //   - face: 'host';
 //   - invocation codec 必须挂 zod v4 实例(校验要求 "_zod" + parse);
 //   - schemas 数组可以为空(invocations 里已带 schema);
@@ -123,12 +123,12 @@ const organizerRestoreResult$schema = z.union([
 ]);
 
 export const TYPERT = {
-  package: 'dsh-session-organizer',
+  package: 'dsh-organizer-sidebar',
   face: 'host',
   schemas: [],
   invocations: [
     {
-      id: 'dsh-session-organizer#organizer/load',
+      id: 'dsh-organizer-sidebar#organizer/load',
       service: 'organizer',
       namespace: 'organizer',
       method: 'load',
@@ -140,20 +140,20 @@ export const TYPERT = {
           source: 'json',
           codec: {
             mode: 'strict',
-            typeSymbol: 'dsh-session-organizer/types#OrganizerLoadRequest',
+            typeSymbol: 'dsh-organizer-sidebar/types#OrganizerLoadRequest',
             schema: organizerLoadRequest$schema,
           },
         },
       ],
       result: {
         mode: 'strict',
-        typeSymbol: 'dsh-session-organizer/types#OrganizerLoadResult',
+        typeSymbol: 'dsh-organizer-sidebar/types#OrganizerLoadResult',
         schema: organizerLoadResult$schema,
       },
-      sourceLocation: { file: 'dsh-session-organizer/lib/host.js', line: 1, column: 1 },
+      sourceLocation: { file: 'dsh-organizer-sidebar/lib/host.js', line: 1, column: 1 },
     },
     {
-      id: 'dsh-session-organizer#organizer/save',
+      id: 'dsh-organizer-sidebar#organizer/save',
       service: 'organizer',
       namespace: 'organizer',
       method: 'save',
@@ -165,20 +165,20 @@ export const TYPERT = {
           source: 'json',
           codec: {
             mode: 'strict',
-            typeSymbol: 'dsh-session-organizer/types#OrganizerSaveRequest',
+            typeSymbol: 'dsh-organizer-sidebar/types#OrganizerSaveRequest',
             schema: organizerSaveRequest$schema,
           },
         },
       ],
       result: {
         mode: 'strict',
-        typeSymbol: 'dsh-session-organizer/types#OrganizerSaveResult',
+        typeSymbol: 'dsh-organizer-sidebar/types#OrganizerSaveResult',
         schema: organizerSaveResult$schema,
       },
-      sourceLocation: { file: 'dsh-session-organizer/lib/host.js', line: 1, column: 1 },
+      sourceLocation: { file: 'dsh-organizer-sidebar/lib/host.js', line: 1, column: 1 },
     },
     {
-      id: 'dsh-session-organizer#organizer/delete',
+      id: 'dsh-organizer-sidebar#organizer/delete',
       service: 'organizer',
       namespace: 'organizer',
       method: 'delete',
@@ -190,20 +190,20 @@ export const TYPERT = {
           source: 'json',
           codec: {
             mode: 'strict',
-            typeSymbol: 'dsh-session-organizer/types#OrganizerDeleteRequest',
+            typeSymbol: 'dsh-organizer-sidebar/types#OrganizerDeleteRequest',
             schema: organizerDeleteRequest$schema,
           },
         },
       ],
       result: {
         mode: 'strict',
-        typeSymbol: 'dsh-session-organizer/types#OrganizerDeleteResult',
+        typeSymbol: 'dsh-organizer-sidebar/types#OrganizerDeleteResult',
         schema: organizerDeleteResult$schema,
       },
-      sourceLocation: { file: 'dsh-session-organizer/lib/host.js', line: 1, column: 1 },
+      sourceLocation: { file: 'dsh-organizer-sidebar/lib/host.js', line: 1, column: 1 },
     },
     {
-      id: 'dsh-session-organizer#organizer/deleteArchived',
+      id: 'dsh-organizer-sidebar#organizer/deleteArchived',
       service: 'organizer',
       namespace: 'organizer',
       method: 'deleteArchived',
@@ -215,20 +215,20 @@ export const TYPERT = {
           source: 'json',
           codec: {
             mode: 'strict',
-            typeSymbol: 'dsh-session-organizer/types#OrganizerDeleteArchivedRequest',
+            typeSymbol: 'dsh-organizer-sidebar/types#OrganizerDeleteArchivedRequest',
             schema: organizerDeleteArchivedRequest$schema,
           },
         },
       ],
       result: {
         mode: 'strict',
-        typeSymbol: 'dsh-session-organizer/types#OrganizerDeleteArchivedResult',
+        typeSymbol: 'dsh-organizer-sidebar/types#OrganizerDeleteArchivedResult',
         schema: organizerDeleteArchivedResult$schema,
       },
-      sourceLocation: { file: 'dsh-session-organizer/lib/host.js', line: 1, column: 1 },
+      sourceLocation: { file: 'dsh-organizer-sidebar/lib/host.js', line: 1, column: 1 },
     },
     {
-      id: 'dsh-session-organizer#organizer/listDeleted',
+      id: 'dsh-organizer-sidebar#organizer/listDeleted',
       service: 'organizer',
       namespace: 'organizer',
       method: 'listDeleted',
@@ -240,20 +240,20 @@ export const TYPERT = {
           source: 'json',
           codec: {
             mode: 'strict',
-            typeSymbol: 'dsh-session-organizer/types#OrganizerListDeletedRequest',
+            typeSymbol: 'dsh-organizer-sidebar/types#OrganizerListDeletedRequest',
             schema: organizerLoadRequest$schema,
           },
         },
       ],
       result: {
         mode: 'strict',
-        typeSymbol: 'dsh-session-organizer/types#OrganizerListDeletedResult',
+        typeSymbol: 'dsh-organizer-sidebar/types#OrganizerListDeletedResult',
         schema: organizerListDeletedResult$schema,
       },
-      sourceLocation: { file: 'dsh-session-organizer/lib/host.js', line: 1, column: 1 },
+      sourceLocation: { file: 'dsh-organizer-sidebar/lib/host.js', line: 1, column: 1 },
     },
     {
-      id: 'dsh-session-organizer#organizer/restoreArchived',
+      id: 'dsh-organizer-sidebar#organizer/restoreArchived',
       service: 'organizer',
       namespace: 'organizer',
       method: 'restoreArchived',
@@ -265,20 +265,20 @@ export const TYPERT = {
           source: 'json',
           codec: {
             mode: 'strict',
-            typeSymbol: 'dsh-session-organizer/types#OrganizerRestoreRequest',
+            typeSymbol: 'dsh-organizer-sidebar/types#OrganizerRestoreRequest',
             schema: organizerRestoreRequest$schema,
           },
         },
       ],
       result: {
         mode: 'strict',
-        typeSymbol: 'dsh-session-organizer/types#OrganizerRestoreResult',
+        typeSymbol: 'dsh-organizer-sidebar/types#OrganizerRestoreResult',
         schema: organizerRestoreResult$schema,
       },
-      sourceLocation: { file: 'dsh-session-organizer/lib/host.js', line: 1, column: 1 },
+      sourceLocation: { file: 'dsh-organizer-sidebar/lib/host.js', line: 1, column: 1 },
     },
     {
-      id: 'dsh-session-organizer#organizer/restoreDeleted',
+      id: 'dsh-organizer-sidebar#organizer/restoreDeleted',
       service: 'organizer',
       namespace: 'organizer',
       method: 'restoreDeleted',
@@ -290,17 +290,17 @@ export const TYPERT = {
           source: 'json',
           codec: {
             mode: 'strict',
-            typeSymbol: 'dsh-session-organizer/types#OrganizerRestoreRequest',
+            typeSymbol: 'dsh-organizer-sidebar/types#OrganizerRestoreRequest',
             schema: organizerRestoreRequest$schema,
           },
         },
       ],
       result: {
         mode: 'strict',
-        typeSymbol: 'dsh-session-organizer/types#OrganizerRestoreResult',
+        typeSymbol: 'dsh-organizer-sidebar/types#OrganizerRestoreResult',
         schema: organizerRestoreResult$schema,
       },
-      sourceLocation: { file: 'dsh-session-organizer/lib/host.js', line: 1, column: 1 },
+      sourceLocation: { file: 'dsh-organizer-sidebar/lib/host.js', line: 1, column: 1 },
     },
   ],
   model: {
