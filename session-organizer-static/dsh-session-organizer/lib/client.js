@@ -227,14 +227,31 @@ window.__ModuleLoader__.load({
       ],
     };
 
-    async function apply(ctx) {
-      // 单包合并:先挂 Typert remote(官方 dsh-api-remotes 同款),
-      // 再注册 UI,保证 Browser 渲染时 ctx.remote.organizer 已就绪。
-      try {
-        await ctx.remote.$mount(TYPERT_REMOTE);
-      } catch (e) {
-        console.error('[dsh-session-organizer] remote $mount failed', e);
-        // 继续注册 UI;持久化调用会因 remote 缺失而优雅降级
+    function apply(ctx) {
+      // 单包合并:挂 Typert remote(fire-and-forget,官方 dsh-api-remotes 同款
+      // $mount 语义——它经 enqueue 队列异步完成,不能 await,否则 UI 注册被阻塞)。
+      // remoteReady 置位后 Browser 的首次 loadState 才真正调用 remote。
+      var remoteReady = false;
+      var remoteReadyWaiters = [];
+      function whenRemoteReady() {
+        if (remoteReady) return Promise.resolve();
+        return new Promise(function (resolve) { remoteReadyWaiters.push(resolve); });
+      }
+      var mp = null;
+      try { mp = ctx.remote.$mount(TYPERT_REMOTE); } catch (e) { mp = null; }
+      if (mp && typeof mp.then === 'function') {
+        mp.then(function () {
+          remoteReady = true;
+          remoteReadyWaiters.forEach(function (r) { r(); });
+          remoteReadyWaiters = [];
+        }, function (e) {
+          console.error('[dsh-session-organizer] remote $mount failed', e);
+          remoteReady = true; // 即使失败也放行,持久化调用会降级
+          remoteReadyWaiters.forEach(function (r) { r(); });
+          remoteReadyWaiters = [];
+        });
+      } else {
+        remoteReady = true;
       }
       var sessionsService = ctx.sessions;
       var workspacesService = ctx.workspaces;
@@ -256,22 +273,24 @@ window.__ModuleLoader__.load({
       // ---- persisted view state (groups nested under a workspace + per-account order) ----
       var persisted = { groups: [], order: {} };
       function loadState() {
-        var p = null;
-        try {
-          p = ctx.remote.organizer.load({});
-        } catch (e) { p = null; }
-        if (p && typeof p.then === 'function') {
-          return p.then(function (r) {
-            var res = r && r.ok ? r.value : null;
-            if (res && typeof res === 'object' && Array.isArray(res.groups)) {
-              persisted = {
-                groups: res.groups.filter(function (g) { return g && typeof g.workspaceId === 'string'; }),
-                order: res.order || {},
-              };
-            }
-          }, function () { /* first run: no state yet */ });
-        }
-        return Promise.resolve();
+        return whenRemoteReady().then(function () {
+          var p = null;
+          try {
+            p = ctx.remote.organizer.load({});
+          } catch (e) { p = null; }
+          if (p && typeof p.then === 'function') {
+            return p.then(function (r) {
+              var res = r && r.ok ? r.value : null;
+              if (res && typeof res === 'object' && Array.isArray(res.groups)) {
+                persisted = {
+                  groups: res.groups.filter(function (g) { return g && typeof g.workspaceId === 'string'; }),
+                  order: res.order || {},
+                };
+              }
+            }, function () { /* first run: no state yet */ });
+          }
+          return Promise.resolve();
+        });
       }
       function saveState(next) {
         persisted = next;
