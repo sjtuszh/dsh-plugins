@@ -150,6 +150,8 @@ class SessionOrganizerService extends TypertRemoteService {
 
   // 批量删除已归档会话:每个会话回收站删除(复用 _deleteSessionDir)+ 从
   // archivedSessionIds 移除标记,一步完成避免两步间窗口闪烁。返回逐条结果。
+  // 对"目录已不存在"的归档会话(如数据已被清理但标记残留)宽容处理:只移除
+  // 标记,视为成功——归档删除的语义是"从归档消失",数据是否还在不影响。
   async deleteArchived(request) {
     const ids = request && request.ids;
     if (!Array.isArray(ids) || ids.length === 0) return { ok: false, error: '缺少 ids' };
@@ -161,7 +163,12 @@ class SessionOrganizerService extends TypertRemoteService {
         continue;
       }
       const r = await this._deleteSessionDir(sessionId, (request && request.titles && request.titles[sessionId]) || sessionId);
-      if (r.ok) {
+      // 目录不存在(locate 失败或会话不在持久化列表)不算失败:数据已清理,
+      // 只需移除归档标记。仅 live 会话/系统错误视为真失败。
+      const treatAsCleaned = !r.ok && (
+        r.error === '会话不存在' || r.error === '无法定位会话文件'
+      );
+      if (r.ok || treatAsCleaned) {
         // 移除归档标记
         if (registry !== undefined) {
           try {
@@ -176,7 +183,7 @@ class SessionOrganizerService extends TypertRemoteService {
             });
           } catch (e) { /* 标记移除失败不阻断删除结果 */ }
         }
-        results.push({ sessionId, ok: true });
+        results.push({ sessionId, ok: true, cleaned: r.ok ? undefined : true });
       } else {
         results.push({ sessionId, ok: false, error: r.error });
       }
@@ -213,8 +220,27 @@ class SessionOrganizerService extends TypertRemoteService {
     }
   }
 
+  // 把 sessionId 加回 workspace 注册表的 archivedSessionIds(已删除会话还原后
+  // 回到「已归档」状态——因为删除都是从已归档 tab 发起的)。
+  async _readdArchived(sessionId) {
+    const registry = this.ctx.get('workspaceRegistry');
+    if (registry === undefined) return;
+    try {
+      await registry.enqueueOperation(async () => {
+        const state = registry.requireState();
+        if (!state.archivedSessionIds.includes(sessionId)) {
+          await registry.setState({
+            ...state,
+            archivedSessionIds: [...state.archivedSessionIds, sessionId],
+          });
+        }
+      });
+    } catch (e) { /* best effort */ }
+  }
+
   // 从回收站还原已删除会话:Shell COM 枚举回收站,按「原位置」匹配 dir,
-  // 对匹配项执行「还原」动词(DoIt),把目录移回原位;成功后清除删除记录。
+  // 对匹配项执行「还原」动词(DoIt),把目录移回原位;成功后清除删除记录,
+  // 并把会话加回 archivedSessionIds(回到已归档 tab)。
   // 脚本含中文动词「还原」,以 UTF-8 BOM 写文件(PS 5.1 需 BOM 才正确解码 UTF-8)。
   async restoreDeleted(request) {
     const sessionId = request && request.sessionId;
@@ -230,6 +256,7 @@ class SessionOrganizerService extends TypertRemoteService {
       const stat = await fs.stat(target);
       if (stat !== undefined) {
         await this._writeDeleted(items.filter((x) => x.sessionId !== sessionId));
+        await this._readdArchived(sessionId);
         return { ok: true, already: true };
       }
       // Shell COM 的「原位置」列(GetDetailsOf(item,1))只显示父目录(两层路径时),
@@ -258,6 +285,7 @@ class SessionOrganizerService extends TypertRemoteService {
       const after = await fs.stat(target);
       if (after === undefined) return { ok: false, error: '回收站中未找到该会话或还原失败' };
       await this._writeDeleted(items.filter((x) => x.sessionId !== sessionId));
+      await this._readdArchived(sessionId);
       return { ok: true };
     } catch (e) {
       return { ok: false, error: (e && e.message) ? String(e.message) : String(e) };

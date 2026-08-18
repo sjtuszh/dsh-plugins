@@ -72,23 +72,25 @@ const organizerDeleteArchivedRequest$schema = z.object({
   titles: z.record(z.string(), z.string()).optional(),
 });
 
+// results 条目统一:{sessionId, ok, error?, cleaned?}。ok:true 可带 cleaned
+// (目录本就不存在只清标记);ok:false 带 error。成功/失败条目可能混合出现。
+const organizerDeleteArchivedEntry$schema = z.object({
+  sessionId: z.string(),
+  ok: z.boolean(),
+  error: z.string().optional(),
+  cleaned: z.boolean().optional(),
+});
+
 const organizerDeleteArchivedResult$schema = z.union([
   z.object({
     ok: z.literal(true),
-    results: z.array(z.object({
-      sessionId: z.string(),
-      ok: z.literal(true),
-    })),
+    results: z.array(organizerDeleteArchivedEntry$schema),
   }),
   z.object({
     ok: z.literal(false),
     partial: z.boolean().optional(),
     error: z.string().optional(),
-    results: z.array(z.object({
-      sessionId: z.string(),
-      ok: z.literal(false),
-      error: z.string(),
-    })).optional(),
+    results: z.array(organizerDeleteArchivedEntry$schema).optional(),
   }),
 ]);
 
@@ -402,7 +404,7 @@ export const TYPERT = {
           },
           {
             name: 'OrganizerDeleteArchivedResult',
-            declaration: 'export type OrganizerDeleteArchivedResult =\n    | { ok: true; results: { sessionId: string; ok: true }[] }\n    | { ok: false; partial?: boolean; error?: string; results?: { sessionId: string; ok: false; error: string }[] };',
+            declaration: 'export type OrganizerDeleteArchivedResult =\n    | { ok: true; results: { sessionId: string; ok: boolean; error?: string; cleaned?: boolean }[] }\n    | { ok: false; partial?: boolean; error?: string; results?: { sessionId: string; ok: boolean; error?: string; cleaned?: boolean }[] };',
           },
           {
             name: 'OrganizerDeletedItem',

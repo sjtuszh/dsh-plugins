@@ -896,7 +896,6 @@ window.__ModuleLoader__.load({
               { id: 'rename', label: '重命名' },
               { id: 'fork', label: '复制会话' },
               { id: 'archive', label: '归档会话' },
-              { id: 'delete', label: '删除会话', danger: true },
             ],
           });
         }
@@ -906,11 +905,40 @@ window.__ModuleLoader__.load({
           if (m.kind === 'group') {
             if (id === 'rename') { setModal({ kind: 'group-rename', id: m.id }); setDraft((groups.find(function (g) { return g.id === m.id; }) || {}).name || ''); }
             if (id === 'delete') { var found = groups.find(function (g) { return g.id === m.id; }) || {}; setModal({ kind: 'group-delete', id: m.id, name: found.name || '' }); }
+          } else if (m.kind === 'archived') {
+            if (id === 'restore') restoreArchived(m.id);
+            if (id === 'delete') deleteArchivedOne(m.id);
           } else {
             if (id === 'rename') renameSession(m.id);
             if (id === 'fork') forkSession(m.id);
             if (id === 'archive') archiveSession(m.id);
-            if (id === 'delete') deleteSession(m.id);
+          }
+        }
+        // 已归档会话三点菜单(未进入批量模式时可用):单条还原 / 单条删除
+        function archivedMenu(e, id) {
+          openMenuAt(e, {
+            kind: 'archived', id: id, items: [
+              { id: 'restore', label: '还原' },
+              { id: 'delete', label: '删除', danger: true },
+            ],
+          });
+        }
+        // 单条删除已归档会话:复用批量删除端点(回收站删除 + 移除归档标记)
+        function deleteArchivedOne(id) {
+          if (!window.confirm('删除已归档会话？会话记录会移入系统回收站，可从回收站还原。')) return;
+          var s = byId[id];
+          var title = s ? (s.blank ? '新会话' : (s.displayTitle || id)) : id;
+          var titles = {}; titles[id] = title;
+          var p = null;
+          try { p = ctx.get("remote.organizer").deleteArchived({ ids: [id], titles: titles }); } catch (e) { p = null; }
+          if (p && typeof p.then === 'function') {
+            p.then(function (r) {
+              var res = r && r.ok ? r.value : null;
+              if (!(res && res.ok)) {
+                var errMsg = (res && res.error) || ((r && r.error && (r.error.message || r.error.code)) || '删除失败');
+                window.alert('删除失败：' + errMsg);
+              }
+            }, function () { window.alert('删除失败：请求出错'); });
           }
         }
 
@@ -1082,7 +1110,8 @@ window.__ModuleLoader__.load({
                   className: 'sorg-row sorg-title-sm' + (checked ? ' sorg-selRow' : ''),
                   onClick: function () { openSession(id); },
                   children: [
-                    react.createElement('input', {
+                    // 仅批量操作模式显示勾选框;默认只显示三点菜单(还原/删除)
+                    archSelecting && react.createElement('input', {
                       type: 'checkbox',
                       className: 'sorg-cb',
                       checked: checked,
@@ -1096,10 +1125,9 @@ window.__ModuleLoader__.load({
                       ? null
                       : react.createElement('button', {
                           type: 'button',
-                          className: 'sorg-rtBtn',
-                          disabled: restoring === id,
-                          onClick: function (e) { e.stopPropagation(); restoreArchived(id); },
-                        }, restoring === id ? '还原中…' : '还原'),
+                          className: 'sorg-dots',
+                          onClick: function (e) { archivedMenu(e, id); },
+                        }, '\u22EF'),
                   ],
                 });
               }),
