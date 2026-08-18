@@ -1,0 +1,5 @@
+# dsh-cost-panel bundle patch:应用时向 profile 组合树插入本插件行。
+# 通过 `dsh plugin --profile <name> add dsh-cost-panel` 安装后自动生效。
+- insert:
+    - id: cost-panel
+      name: dsh-cost-panel

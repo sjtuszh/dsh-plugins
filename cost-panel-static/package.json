@@ -1,7 +1,7 @@
 {
   "name": "dsh-cost-panel",
-  "version": "1.3.0",
-  "description": "DeepSeek 双轨计费面板（DSH 静态插件）:会话头部实时计费、历史/定价表/总量统计(所有会话)、分叉会话从 0 计起、DeepSeek API 余额展示。随 dsh profile 启动自动加载,无需批准。",
+  "version": "1.4.1",
+  "description": "DeepSeek 双轨计费面板（DSH 静态插件）:会话头部实时计费、历史/定价表/总量统计(所有会话)、分叉会话从 0 计起、DeepSeek API 余额展示。随 dsh profile 启动自动加载,无需批准。可用 `dsh plugin --profile <name> add dsh-cost-panel` 一键安装。",
   "type": "module",
   "main": "lib/host.js",
   "exports": {
@@ -10,7 +10,8 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "lib"
+    "lib",
+    "cordis.patch.yml"
   ],
   "license": "MIT",
   "repository": {
@@ -26,6 +27,9 @@
     "cordis"
   ],
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web",
       "inject": [
