@@ -522,6 +522,9 @@ window.__ModuleLoader__.load({
           }
         }
         for (var ck of Object.keys(childrenOf)) {
+          // catalog 里的 child id 可能不在 byId(已删除/对账中),排序前过滤掉,
+          // 否则 byId[a].createdAt 抛 TypeError 崩溃整个侧边栏。
+          childrenOf[ck] = childrenOf[ck].filter(function (id) { return byId[id] !== undefined; });
           childrenOf[ck].sort(function (a, b) { return (byId[a].createdAt || 0) - (byId[b].createdAt || 0); });
         }
         // subagent label → display name: strip the 'agent-teams:' prefix so a
