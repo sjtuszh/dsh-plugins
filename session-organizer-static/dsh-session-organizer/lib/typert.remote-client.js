@@ -64,6 +64,23 @@ export const TYPERT_REMOTE = {
       sourceLocation: { file: 'dsh-session-organizer/lib/host.js', line: 1, column: 1 },
     },
     {
+      id: 'dsh-session-organizer#organizer/deleteArchived',
+      service: 'organizer',
+      namespace: 'organizer',
+      method: 'deleteArchived',
+      invocation: { kind: 'direct' },
+      parameters: [
+        {
+          name: 'request',
+          wire: 'request',
+          source: 'json',
+          codec: { mode: 'strict', typeSymbol: 'dsh-session-organizer/types#OrganizerDeleteArchivedRequest', schema: stubSchema },
+        },
+      ],
+      result: { mode: 'strict', typeSymbol: 'dsh-session-organizer/types#OrganizerDeleteArchivedResult', schema: stubSchema },
+      sourceLocation: { file: 'dsh-session-organizer/lib/host.js', line: 1, column: 1 },
+    },
+    {
       id: 'dsh-session-organizer#organizer/listDeleted',
       service: 'organizer',
       namespace: 'organizer',

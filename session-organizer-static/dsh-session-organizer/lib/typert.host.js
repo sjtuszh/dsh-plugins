@@ -67,6 +67,31 @@ const organizerDeleteResult$schema = z.union([
   }),
 ]);
 
+const organizerDeleteArchivedRequest$schema = z.object({
+  ids: z.array(z.string()),
+  titles: z.record(z.string(), z.string()).optional(),
+});
+
+const organizerDeleteArchivedResult$schema = z.union([
+  z.object({
+    ok: z.literal(true),
+    results: z.array(z.object({
+      sessionId: z.string(),
+      ok: z.literal(true),
+    })),
+  }),
+  z.object({
+    ok: z.literal(false),
+    partial: z.boolean().optional(),
+    error: z.string().optional(),
+    results: z.array(z.object({
+      sessionId: z.string(),
+      ok: z.literal(false),
+      error: z.string(),
+    })).optional(),
+  }),
+]);
+
 const organizerListDeletedResult$schema = z.union([
   z.object({
     ok: z.literal(true),
@@ -174,6 +199,31 @@ export const TYPERT = {
         mode: 'strict',
         typeSymbol: 'dsh-session-organizer/types#OrganizerDeleteResult',
         schema: organizerDeleteResult$schema,
+      },
+      sourceLocation: { file: 'dsh-session-organizer/lib/host.js', line: 1, column: 1 },
+    },
+    {
+      id: 'dsh-session-organizer#organizer/deleteArchived',
+      service: 'organizer',
+      namespace: 'organizer',
+      method: 'deleteArchived',
+      invocation: { kind: 'direct' },
+      parameters: [
+        {
+          name: 'request',
+          wire: 'request',
+          source: 'json',
+          codec: {
+            mode: 'strict',
+            typeSymbol: 'dsh-session-organizer/types#OrganizerDeleteArchivedRequest',
+            schema: organizerDeleteArchivedRequest$schema,
+          },
+        },
+      ],
+      result: {
+        mode: 'strict',
+        typeSymbol: 'dsh-session-organizer/types#OrganizerDeleteArchivedResult',
+        schema: organizerDeleteArchivedResult$schema,
       },
       sourceLocation: { file: 'dsh-session-organizer/lib/host.js', line: 1, column: 1 },
     },
@@ -286,6 +336,13 @@ export const TYPERT = {
           },
           {
             kind: 'method',
+            name: 'deleteArchived',
+            signature: 'async deleteArchived(request: OrganizerDeleteArchivedRequest): Promise<OrganizerDeleteArchivedResult>',
+            summary: '批量删除已归档会话(回收站删除 + 移除归档标记)。',
+            jsDoc: '/**\n * 批量删除已归档会话。\n * @param request - 目标 sessionId 列表。\n * @returns 逐条结果;部分失败时 ok=false 且 partial=true。\n */',
+          },
+          {
+            kind: 'method',
             name: 'listDeleted',
             signature: 'async listDeleted(request: OrganizerLoadRequest): Promise<OrganizerListDeletedResult>',
             summary: '列出已删除会话(供「已删除」tab)。',
@@ -338,6 +395,14 @@ export const TYPERT = {
           {
             name: 'OrganizerDeleteResult',
             declaration: 'export type OrganizerDeleteResult = { ok: true } | { ok: false; error: string };',
+          },
+          {
+            name: 'OrganizerDeleteArchivedRequest',
+            declaration: 'export interface OrganizerDeleteArchivedRequest {\n    readonly ids: readonly string[];\n    readonly titles?: Record<string, string>;\n}',
+          },
+          {
+            name: 'OrganizerDeleteArchivedResult',
+            declaration: 'export type OrganizerDeleteArchivedResult =\n    | { ok: true; results: { sessionId: string; ok: true }[] }\n    | { ok: false; partial?: boolean; error?: string; results?: { sessionId: string; ok: false; error: string }[] };',
           },
           {
             name: 'OrganizerDeletedItem',

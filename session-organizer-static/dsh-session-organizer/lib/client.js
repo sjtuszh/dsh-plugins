@@ -76,6 +76,10 @@ window.__ModuleLoader__.load({
 .sorg-rtBtn{flex:none;height:22px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer;font-size:11px;font:inherit;padding:0 8px;white-space:nowrap}
 .sorg-rtBtn:hover{background:var(--dsw-alias-bg-layer-2)}
 .sorg-rtBtn:disabled{opacity:.5;cursor:default}
+.sorg-cb{flex:none;width:15px;height:15px;margin:0 4px 0 2px;accent-color:var(--dsw-alias-state-business-primary);cursor:pointer}
+.sorg-batch{flex:none;display:flex;gap:6px;align-items:center;padding:0 8px 6px;flex-wrap:wrap}
+.sorg-batchInfo{font-size:11px;color:var(--dsw-alias-label-secondary);margin-right:auto}
+.sorg-selRow{background:var(--dsw-alias-interactive-bg-hover)}
 `;
 
     var CSS_ID = "dsh-session-organizer/styles";
@@ -201,6 +205,11 @@ window.__ModuleLoader__.load({
         var deletedItems = deletedState[0], setDeletedItems = deletedState[1];
         var restoringState = react.useState(null); // 正在还原的 sessionId(禁用按钮)
         var restoring = restoringState[0], setRestoring = restoringState[1];
+        // 已归档 tab 多选:selection = Set(由数组承载), selecting 为选择模式开关
+        var archSelectState = react.useState([]); // string[] 选中 id
+        var archSelected = archSelectState[0], setArchSelected = archSelectState[1];
+        var archSelectingState = react.useState(false);
+        var archSelecting = archSelectingState[0], setArchSelecting = archSelectingState[1];
 
         react.useEffect(function () {
           loadState().then(function () {
@@ -219,6 +228,14 @@ window.__ModuleLoader__.load({
               var res = r && r.ok ? r.value : null;
               if (res && res.ok && Array.isArray(res.items)) setDeletedItems(res.items);
             }, function () {});
+          }
+        }, [tab]);
+
+        // 离开已归档 tab 时清空选择模式与选中
+        react.useEffect(function () {
+          if (tab !== 'archived') {
+            setArchSelecting(false);
+            setArchSelected([]);
           }
         }, [tab]);
 
@@ -609,6 +626,61 @@ window.__ModuleLoader__.load({
             }, function () { setRestoring(null); window.alert('还原失败：请求出错'); });
           } else setRestoring(null);
         }
+        // 批量还原已归档会话:逐个调 restoreArchived,全部结束后清空选择
+        function restoreArchivedMany(ids) {
+          var pending = ids.length;
+          if (pending === 0) return;
+          var done = function () {
+            pending -= 1;
+            if (pending <= 0) setArchSelected([]);
+          };
+          ids.forEach(function (id) {
+            var p = null;
+            try { p = ctx.remote.organizer.restoreArchived({ sessionId: id }); } catch (e) { p = null; }
+            if (p && typeof p.then === 'function') {
+              p.then(function (r) {
+                var res = r && r.ok ? r.value : null;
+                if (!(res && res.ok)) {
+                  var errMsg = (res && res.error) || ((r && r.error && (r.error.message || r.error.code)) || '还原失败');
+                  window.alert('还原失败：' + errMsg);
+                }
+                done();
+              }, function () { window.alert('还原失败：请求出错'); done(); });
+            } else done();
+          });
+        }
+        // 批量删除已归档会话:调 Host deleteArchived(回收站删除 + 移除归档标记)
+        function deleteArchivedMany(ids) {
+          if (ids.length === 0) return;
+          if (!window.confirm('删除选中的 ' + ids.length + ' 个已归档会话？会话记录会移入系统回收站，可从回收站还原。')) return;
+          var titles = {};
+          ids.forEach(function (id) {
+            var s = byId[id];
+            titles[id] = s ? (s.blank ? '新会话' : (s.displayTitle || id)) : id;
+          });
+          var p = null;
+          try { p = ctx.remote.organizer.deleteArchived({ ids: ids, titles: titles }); } catch (e) { p = null; }
+          if (p && typeof p.then === 'function') {
+            p.then(function (r) {
+              var res = r && r.ok ? r.value : null;
+              if (res && res.ok) {
+                setArchSelected([]);
+              } else {
+                var errMsg = (res && res.error) || ((r && r.error && (r.error.message || r.error.code)) || '删除失败');
+                window.alert('删除失败：' + errMsg);
+                // 部分成功:清掉已成功的,保留失败的
+                if (res && res.partial && Array.isArray(res.results)) {
+                  var failedIds = res.results.filter(function (x) { return !x.ok; }).map(function (x) { return x.sessionId; });
+                  setArchSelected(archSelected.filter(function (x) { return failedIds.indexOf(x) !== -1; }));
+                } else setArchSelected([]);
+              }
+            }, function () { window.alert('删除失败：请求出错'); });
+          }
+        }
+        // 已归档 tab 选择切换
+        function toggleArchSelect(id) {
+          setArchSelected(archSelected.indexOf(id) === -1 ? archSelected.concat([id]) : archSelected.filter(function (x) { return x !== id; }));
+        }
         // 还原已删除会话:调 Host 从回收站还原,成功后从列表移除
         function restoreDeleted(id) {
           setRestoring(id);
@@ -795,32 +867,82 @@ window.__ModuleLoader__.load({
         var ungroupedSessions = orderedIn(ungroupedKey, stray);
 
         // ---- 已归档 tab:archivedSessionIds 里的会话,按归档顺序(注册表顺序)排列 ----
+        // 支持选择模式:点 checkbox 勾选,可批量还原/删除
         function archivedList() {
           var ids = (wsState && wsState.archivedSessionIds) || [];
           if (ids.length === 0) {
             return react.createElement('div', { className: 'sorg-empty' }, '没有已归档的会话');
           }
-          return react.createElement('div', { className: 'sorg-grp' },
-            ids.map(function (id) {
-              var s = byId[id];
-              var title = s ? (s.blank ? '新会话' : (s.displayTitle || id)) : id;
-              return react.createElement('div', {
-                key: id,
-                className: 'sorg-row sorg-title-sm',
-                onClick: function () { openSession(id); },
-                children: [
-                  react.createElement('span', { className: 'sorg-ico' }, '\u{1F4C1}'), // 📁 closed folder
-                  react.createElement('span', { className: 'sorg-name' }, title),
-                  react.createElement('span', { className: 'sorg-time' }, timeOf(id)),
-                  react.createElement('button', {
-                    type: 'button',
-                    className: 'sorg-rtBtn',
-                    disabled: restoring === id,
-                    onClick: function (e) { e.stopPropagation(); restoreArchived(id); },
-                  }, restoring === id ? '还原中…' : '还原'),
-                ],
-              });
-            }),
+          var allSelected = archSelected.length === ids.length;
+          return react.createElement('div', null,
+            react.createElement('div', { className: 'sorg-batch' },
+              archSelecting
+                ? react.createElement(react.Fragment, null,
+                    react.createElement('span', { className: 'sorg-batchInfo' }, '已选 ' + archSelected.length + ' / ' + ids.length),
+                    react.createElement('button', {
+                      type: 'button',
+                      className: 'sorg-rtBtn',
+                      onClick: function () { setArchSelected(allSelected ? [] : ids.slice()); },
+                    }, allSelected ? '取消全选' : '全选'),
+                    react.createElement('button', {
+                      type: 'button',
+                      className: 'sorg-rtBtn',
+                      disabled: archSelected.length === 0,
+                      onClick: function () { restoreArchivedMany(archSelected.slice()); },
+                    }, '还原选中'),
+                    react.createElement('button', {
+                      type: 'button',
+                      className: 'sorg-rtBtn',
+                      disabled: archSelected.length === 0,
+                      onClick: function () { deleteArchivedMany(archSelected.slice()); },
+                    }, '删除选中'),
+                    react.createElement('button', {
+                      type: 'button',
+                      className: 'sorg-rtBtn',
+                      onClick: function () { setArchSelecting(false); setArchSelected([]); },
+                    }, '取消'),
+                  )
+                : react.createElement(react.Fragment, null,
+                    react.createElement('span', { className: 'sorg-batchInfo' }, '共 ' + ids.length + ' 个已归档会话'),
+                    react.createElement('button', {
+                      type: 'button',
+                      className: 'sorg-rtBtn',
+                      onClick: function () { setArchSelecting(true); },
+                    }, '批量操作'),
+                  ),
+            ),
+            react.createElement('div', { className: 'sorg-grp' },
+              ids.map(function (id) {
+                var s = byId[id];
+                var title = s ? (s.blank ? '新会话' : (s.displayTitle || id)) : id;
+                var checked = archSelected.indexOf(id) !== -1;
+                return react.createElement('div', {
+                  key: id,
+                  className: 'sorg-row sorg-title-sm' + (checked ? ' sorg-selRow' : ''),
+                  onClick: function () { openSession(id); },
+                  children: [
+                    react.createElement('input', {
+                      type: 'checkbox',
+                      className: 'sorg-cb',
+                      checked: checked,
+                      onChange: function (e) { e.stopPropagation(); toggleArchSelect(id); },
+                      onClick: function (e) { e.stopPropagation(); },
+                    }),
+                    react.createElement('span', { className: 'sorg-ico' }, '\u{1F4C1}'), // 📁 closed folder
+                    react.createElement('span', { className: 'sorg-name' }, title),
+                    react.createElement('span', { className: 'sorg-time' }, timeOf(id)),
+                    archSelecting
+                      ? null
+                      : react.createElement('button', {
+                          type: 'button',
+                          className: 'sorg-rtBtn',
+                          disabled: restoring === id,
+                          onClick: function (e) { e.stopPropagation(); restoreArchived(id); },
+                        }, restoring === id ? '还原中…' : '还原'),
+                  ],
+                });
+              }),
+            ),
           );
         }
 

@@ -97,18 +97,9 @@ class SessionOrganizerService extends TypertRemoteService {
     }
   }
 
-  // 删除会话:把持久化目录(sessions/<projectKey>/<sessionId>/)连同日志与附件
-  // 移入 Windows 回收站(SendToRecycleBin,可还原,不物理删除),并记录到
-  // DELETED_FILE_NAME 供「已删除」tab 展示与还原。sqlite 搜索索引会自动对账
-  // (persistentDeletes → _deleteSession),workspace 注册表会在下次 reconcile
-  // 过滤掉 header 缺失的会话,无需额外清理。
-  // 拒绝删除 live 会话(内存中已挂载),避免破坏运行状态。
-  // 脚本内容纯 ASCII(路径由 encodeSegment/projectKey 编码,不含单引号与高位
-  // 字符),避免 PowerShell 5.1 读 UTF-8 乱码(MEMORY §9);引号只出现在文件内容,
-  // 不经 argv 序列化(MEMORY §11.4)。
-  async delete(request) {
-    const sessionId = request && request.sessionId;
-    if (typeof sessionId !== 'string' || sessionId === '') return { ok: false, error: '缺少 sessionId' };
+  // 内部删除单个会话目录(回收站):返回 { ok, error?, dir? }
+  // 拒绝删除 live 会话;脚本内容纯 ASCII 防 PS 5.1 乱码。
+  async _deleteSessionDir(sessionId, title) {
     const sessions = this.ctx.get('sessions');
     if (sessions !== undefined && sessions.get(sessionId) !== undefined) {
       return { ok: false, error: '会话正在运行,请先归档' };
@@ -131,19 +122,67 @@ class SessionOrganizerService extends TypertRemoteService {
         "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory('" + dir + "', 'OnlyErrorDialogs', 'SendToRecycleBin')\r\n";
       await fs.writeText(await fs.resolve(DELETE_SCRIPT), script);
       await this._runPs1(DELETE_SCRIPT);
-      // 记录已删除元数据(标题由客户端提供,展示友好;缺省用 id 兜底)
       const items = await this._readDeleted();
       items.unshift({
         sessionId,
-        title: (request && typeof request.title === 'string' && request.title !== '') ? request.title : sessionId,
+        title: (typeof title === 'string' && title !== '') ? title : sessionId,
         dir,
         deletedAt: Date.now(),
       });
       await this._writeDeleted(items);
-      return { ok: true };
+      return { ok: true, dir };
     } catch (e) {
       return { ok: false, error: (e && e.message) ? String(e.message) : String(e) };
     }
+  }
+
+  // 删除会话:把持久化目录(sessions/<projectKey>/<sessionId>/)连同日志与附件
+  // 移入 Windows 回收站(SendToRecycleBin,可还原,不物理删除),并记录到
+  // DELETED_FILE_NAME 供「已删除」tab 展示与还原。sqlite 搜索索引会自动对账
+  // (persistentDeletes → _deleteSession),workspace 注册表会在下次 reconcile
+  // 过滤掉 header 缺失的会话,无需额外清理。
+  // 拒绝删除 live 会话(内存中已挂载),避免破坏运行状态。
+  async delete(request) {
+    const sessionId = request && request.sessionId;
+    if (typeof sessionId !== 'string' || sessionId === '') return { ok: false, error: '缺少 sessionId' };
+    return this._deleteSessionDir(sessionId, request && request.title);
+  }
+
+  // 批量删除已归档会话:每个会话回收站删除(复用 _deleteSessionDir)+ 从
+  // archivedSessionIds 移除标记,一步完成避免两步间窗口闪烁。返回逐条结果。
+  async deleteArchived(request) {
+    const ids = request && request.ids;
+    if (!Array.isArray(ids) || ids.length === 0) return { ok: false, error: '缺少 ids' };
+    const registry = this.ctx.get('workspaceRegistry');
+    const results = [];
+    for (const sessionId of ids) {
+      if (typeof sessionId !== 'string' || sessionId === '') {
+        results.push({ sessionId, ok: false, error: '非法 sessionId' });
+        continue;
+      }
+      const r = await this._deleteSessionDir(sessionId, (request && request.titles && request.titles[sessionId]) || sessionId);
+      if (r.ok) {
+        // 移除归档标记
+        if (registry !== undefined) {
+          try {
+            await registry.enqueueOperation(async () => {
+              const state = registry.requireState();
+              if (state.archivedSessionIds.includes(sessionId)) {
+                await registry.setState({
+                  ...state,
+                  archivedSessionIds: state.archivedSessionIds.filter((id) => id !== sessionId),
+                });
+              }
+            });
+          } catch (e) { /* 标记移除失败不阻断删除结果 */ }
+        }
+        results.push({ sessionId, ok: true });
+      } else {
+        results.push({ sessionId, ok: false, error: r.error });
+      }
+    }
+    const failed = results.filter((x) => !x.ok);
+    return failed.length > 0 ? { ok: false, partial: true, results } : { ok: true, results };
   }
 
   // 列出已删除会话(供「已删除」tab):[{sessionId,title,deletedAt}]
