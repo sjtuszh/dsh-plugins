@@ -358,14 +358,16 @@ export default {
               '约束：你只负责信息提取与整理，不要执行文件或命令操作，不要调用工具。'
             ].join('\n')
             // 模型路由：auto=继承目标会话；custom=设置面板指定的 provider/model。
-            const request = { parent: g.agent, prompt: [textBlock(promptText)] }
+            // 注意：外层已有 `const request`（工具参数），这里必须用不同名字，
+            // 否则同作用域 const 重复声明 → TDZ → start 分支必炸。
+            const forkRequest = { parent: g.agent, prompt: [textBlock(promptText)] }
             if (config.modelMode === 'custom' && config.modelProvider && config.modelId) {
-              request.agentOptions = { provider: config.modelProvider, model: config.modelId }
+              forkRequest.agentOptions = { provider: config.modelProvider, model: config.modelId }
             }
             const started = await ctx.subagents.startContinuable({
               provider: 'fork',
               label: 'xchat:' + target,
-              request,
+              request: forkRequest,
               signal: exec.signal
             })
             xchatChildren.add(started.childId)
