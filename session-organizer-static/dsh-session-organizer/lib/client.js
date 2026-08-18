@@ -11,7 +11,7 @@
 //   - 图标:💬 普通会话 / 👔 agent-teams 队长 / 👷 成员 / 🔧 其他子代理,
 //     工作区 📂,分组为按 id 着色的圆点(尺寸随成员数增长);
 //   - 状态点:绿=运行中,黄=等待用户;会话三点菜单:重命名/复制/归档(无文件管理器项);
-//   - 分组与顺序经 ctx.remote.organizer.load/save 持久化(由 mount 包挂载,
+//   - 分组与顺序经 ctx.get("remote.organizer").load/save 持久化(由 mount 包挂载,
 //     本包 inject ["slots","remote","remote.organizer"],无自依赖死锁)。
 // 注意:组件定义在 apply 内部闭包捕获 ctx(模块顶层没有 ctx)。
 // ============================================================================
@@ -98,7 +98,7 @@ window.__ModuleLoader__.load({
     // 非 Proxy),必须 inject "remote.organizer" 才能被注入——单包自 $mount 与
     // inject 不冲突:mount 注册 typert 描述符,remote.organizer 服务的安装由
     // gateway 独立完成,Cordis inject 机制等待依赖就绪,不会自依赖死锁。
-    var inject = ["slots", "remote", "remote.organizer", "sessions", "workspaces"];
+    var inject = ["slots", "remote", "sessions", "workspaces"];
 
     // Typert remote 描述符(原 mount 包内联,单包合并后本包自带):
     // 与 dsh-organizer-sidebar/lib/typert.host.js 清单对应,客户端经它调用 Host。
@@ -228,7 +228,7 @@ window.__ModuleLoader__.load({
       ],
     };
 
-    function apply(ctx) {
+    async function apply(ctx) {
       // 单包合并:挂 Typert remote(fire-and-forget,官方 dsh-api-remotes 同款
       // $mount 语义——它经 enqueue 队列异步完成,不能 await,否则 UI 注册被阻塞)。
       // remoteReady 置位后 Browser 的首次 loadState 才真正调用 remote。
@@ -277,7 +277,7 @@ window.__ModuleLoader__.load({
         return whenRemoteReady().then(function () {
           var p = null;
           try {
-            p = ctx.remote.organizer.load({});
+            p = ctx.get("remote.organizer").load({});
           } catch (e) { p = null; }
           if (p && typeof p.then === 'function') {
             return p.then(function (r) {
@@ -297,7 +297,7 @@ window.__ModuleLoader__.load({
         persisted = next;
         var p = null;
         try {
-          p = ctx.remote.organizer.save({ state: next });
+          p = ctx.get("remote.organizer").save({ state: next });
         } catch (e) { p = null; }
         if (p && typeof p.then === 'function') {
           p.then(function () {}, function () {});
@@ -380,7 +380,7 @@ window.__ModuleLoader__.load({
         react.useEffect(function () {
           if (tab !== 'deleted') return;
           var p = null;
-          try { p = ctx.remote.organizer.listDeleted({}); } catch (e) { p = null; }
+          try { p = ctx.get("remote.organizer").listDeleted({}); } catch (e) { p = null; }
           if (p && typeof p.then === 'function') {
             p.then(function (r) {
               var res = r && r.ok ? r.value : null;
@@ -749,7 +749,7 @@ window.__ModuleLoader__.load({
           var title = modal.title || '';
           setModal(null);
           var p = null;
-          try { p = ctx.remote.organizer.delete({ sessionId: sid, title: title }); } catch (e) { p = null; }
+          try { p = ctx.get("remote.organizer").delete({ sessionId: sid, title: title }); } catch (e) { p = null; }
           if (p && typeof p.then === 'function') {
             p.then(function (r) {
               var res = r && r.ok ? r.value : null;
@@ -775,7 +775,7 @@ window.__ModuleLoader__.load({
         function restoreArchived(id) {
           setRestoring(id);
           var p = null;
-          try { p = ctx.remote.organizer.restoreArchived({ sessionId: id }); } catch (e) { p = null; }
+          try { p = ctx.get("remote.organizer").restoreArchived({ sessionId: id }); } catch (e) { p = null; }
           if (p && typeof p.then === 'function') {
             p.then(function (r) {
               setRestoring(null);
@@ -797,7 +797,7 @@ window.__ModuleLoader__.load({
           };
           ids.forEach(function (id) {
             var p = null;
-            try { p = ctx.remote.organizer.restoreArchived({ sessionId: id }); } catch (e) { p = null; }
+            try { p = ctx.get("remote.organizer").restoreArchived({ sessionId: id }); } catch (e) { p = null; }
             if (p && typeof p.then === 'function') {
               p.then(function (r) {
                 var res = r && r.ok ? r.value : null;
@@ -820,7 +820,7 @@ window.__ModuleLoader__.load({
             titles[id] = s ? (s.blank ? '新会话' : (s.displayTitle || id)) : id;
           });
           var p = null;
-          try { p = ctx.remote.organizer.deleteArchived({ ids: ids, titles: titles }); } catch (e) { p = null; }
+          try { p = ctx.get("remote.organizer").deleteArchived({ ids: ids, titles: titles }); } catch (e) { p = null; }
           if (p && typeof p.then === 'function') {
             p.then(function (r) {
               var res = r && r.ok ? r.value : null;
@@ -846,7 +846,7 @@ window.__ModuleLoader__.load({
         function restoreDeleted(id) {
           setRestoring(id);
           var p = null;
-          try { p = ctx.remote.organizer.restoreDeleted({ sessionId: id }); } catch (e) { p = null; }
+          try { p = ctx.get("remote.organizer").restoreDeleted({ sessionId: id }); } catch (e) { p = null; }
           if (p && typeof p.then === 'function') {
             p.then(function (r) {
               setRestoring(null);
