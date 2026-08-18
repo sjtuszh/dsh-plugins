@@ -1,0 +1,5 @@
+# dsh-cost-panel-mount bundle patch:应用时向 profile 组合树插入挂载行。
+# 通过 `dsh plugin --profile <name> add dsh-cost-panel dsh-cost-panel-mount` 安装后自动生效。
+- insert:
+    - id: cost-panel-mount
+      name: dsh-cost-panel-mount

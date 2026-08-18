@@ -1,14 +1,12 @@
 {
-  "name": "dsh-cost-panel",
-  "version": "1.5.0",
-  "description": "DeepSeek 双轨计费面板（DSH 静态插件）:会话头部实时计费、历史/定价表/总量统计(所有会话实时轮询)、分叉会话从 0 计起、DeepSeek API 余额展示。随 dsh profile 启动自动加载,无需批准。可用 `dsh plugin --profile <name> add dsh-cost-panel dsh-cost-panel-mount` 一键安装。",
+  "name": "dsh-cost-panel-mount",
+  "version": "1.0.0",
+  "description": "双轨计费面板 Typert remote 挂载条目(双条目方案 A:仅 ctx.remote.$mount,不渲染 UI)。与 dsh-cost-panel 配套,为总量统计提供实时轮询接口。",
   "type": "module",
   "main": "lib/host.js",
   "exports": {
     ".": "./lib/host.js",
     "./client": "./lib/client.js",
-    "./typert": "./lib/typert.host.js",
-    "./remote": "./lib/typert.remote-client.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -36,7 +34,7 @@
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-api-remotes",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-conversation"
       ]

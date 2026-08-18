@@ -21,6 +21,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 
 const DSH_HOME = process.env.DSH_HOME || join(homedir(), '.dsh');
 const CREDIT_TO_RMB = 0.4;
@@ -246,53 +247,79 @@ function accumulateGlobal(entry) {
 }
 
 /** 增量同步全局累计:折叠每个已加载会话中尚未折叠的事件(按索引,顺序追加安全)。 */
-function makeSyncGlobal(sessions) {
-  return function syncGlobal() {
-    if (sessions === undefined) return;
-    const now = Date.now();
-    for (const session of sessions.list()) {
-      const evs = session.events;
-      if (!evs) continue;
-      const id = session.id;
-      const h = session.header || {};
-      const seed = typeof h.seedLength === 'number' && h.seedLength > 0 ? h.seedLength : null;
-      let fi = GLOBAL.forks[id];
-      if (!fi) {
-        fi = {
-          forked: seed !== null,
-          seedLength: seed,
-          preForkCost: 0, preForkCalls: 0,
-          preForkInput: 0, preForkOutput: 0, preForkCache: 0,
-          preForkRelay: 0, preForkLegacy: 0,
-          done: seed === null, // 原会话无需区分
-        };
-        GLOBAL.forks[id] = fi;
-      }
-      let i = GLOBAL.idx[id] ?? 0;
-      while (i < evs.length) {
-        const ev = evs[i];
-        i += 1;
-        if (typeof ev.seq !== 'number') continue;
-        const entry = computeEntry(typeof ev.time === 'number' ? ev : { ...ev, time: now });
-        if (!entry) continue;
-        accumulateGlobal(entry);
-        // 分叉会话:分叉前(seq <= seedLength)的费用单独累计,供"从0计起"
-        if (fi.forked && !fi.done) {
-          if (ev.seq <= fi.seedLength) {
-            fi.preForkCost += entry.totalCostRmb;
-            fi.preForkCalls += 1;
-            fi.preForkInput += entry.inputTokens;
-            fi.preForkOutput += entry.outputTokens;
-            fi.preForkCache += entry.cacheTokens;
-            fi.preForkRelay += entry.relayCostRmb;
-            fi.preForkLegacy += entry.legacyCostRmb;
-          } else {
-            fi.done = true; // 事件按 seq 顺序,已越过 seed 边界
-          }
+let sessionsRef = null;
+function syncGlobal() {
+  const sessions = sessionsRef;
+  if (sessions === undefined) return;
+  const now = Date.now();
+  for (const session of sessions.list()) {
+    const evs = session.events;
+    if (!evs) continue;
+    const id = session.id;
+    const h = session.header || {};
+    const seed = typeof h.seedLength === 'number' && h.seedLength > 0 ? h.seedLength : null;
+    let fi = GLOBAL.forks[id];
+    if (!fi) {
+      fi = {
+        forked: seed !== null,
+        seedLength: seed,
+        preForkCost: 0, preForkCalls: 0,
+        preForkInput: 0, preForkOutput: 0, preForkCache: 0,
+        preForkRelay: 0, preForkLegacy: 0,
+        done: seed === null, // 原会话无需区分
+      };
+      GLOBAL.forks[id] = fi;
+    }
+    let i = GLOBAL.idx[id] ?? 0;
+    while (i < evs.length) {
+      const ev = evs[i];
+      i += 1;
+      if (typeof ev.seq !== 'number') continue;
+      const entry = computeEntry(typeof ev.time === 'number' ? ev : { ...ev, time: now });
+      if (!entry) continue;
+      accumulateGlobal(entry);
+      // 分叉会话:分叉前(seq <= seedLength)的费用单独累计,供"从0计起"
+      if (fi.forked && !fi.done) {
+        if (ev.seq <= fi.seedLength) {
+          fi.preForkCost += entry.totalCostRmb;
+          fi.preForkCalls += 1;
+          fi.preForkInput += entry.inputTokens;
+          fi.preForkOutput += entry.outputTokens;
+          fi.preForkCache += entry.cacheTokens;
+          fi.preForkRelay += entry.relayCostRmb;
+          fi.preForkLegacy += entry.legacyCostRmb;
+        } else {
+          fi.done = true; // 事件按 seq 顺序,已越过 seed 边界
         }
       }
-      GLOBAL.idx[id] = i;
     }
+    GLOBAL.idx[id] = i;
+  }
+}
+
+/** 全局统计 + 余额 实时快照:客户端经 Typert remote(costglobal/snapshot)轮询,
+ * 任何会话窗口打开总量统计都是同一份最新数据(不再依赖会话投影推送的快照)。 */
+function globalPayload(now) {
+  const bj = new Date(now + 8 * 3600e3);
+  const todayKey = bj.toISOString().slice(0, 10);
+  const monthPrefix = todayKey.slice(0, 7);
+  const g = aggregateStats(GLOBAL.byDay, todayKey, monthPrefix);
+  return {
+    totals: {
+      calls: GLOBAL.calls, totalCostRmb: GLOBAL.totalCostRmb,
+      relayCostRmb: GLOBAL.relayCostRmb, legacyCostRmb: GLOBAL.legacyCostRmb,
+    },
+    statsToday: g.statsToday,
+    statsMonth: g.statsMonth,
+    label: { today: todayKey, month: monthPrefix },
+    balance: {
+      is_available: BALANCE.is_available,
+      total: BALANCE.total,
+      currency: BALANCE.currency,
+      ts: BALANCE.ts,
+      error: BALANCE.error,
+    },
+    ts: now,
   };
 }
 
@@ -328,14 +355,25 @@ async function refreshBalance() {
   }
 }
 
+/** costglobal 远程服务:snapshot() 返回全局统计 + 余额的实时快照(调用时现算)。 */
+class CostGlobalService extends TypertRemoteService {
+  async snapshot() {
+    syncGlobal(); // 先补上所有已加载会话的最新事件
+    return globalPayload(Date.now());
+  }
+}
+
 export default {
   name: 'dsh-cost-panel',
   inject: ['sessionProjections', 'timer'],
   apply(ctx) {
     // 全局统计:所有会话/工作区的调用累计,增量回填(含历史)
-    const syncGlobal = makeSyncGlobal(ctx.get('sessions'));
+    sessionsRef = ctx.get('sessions');
     ctx.on('session/event', () => { syncGlobal(); });
     syncGlobal(); // 启动时回填当前已加载会话
+
+    // costglobal 远程服务(供客户端轮询实时全局统计 + 余额)
+    new CostGlobalService(ctx, 'costglobal');
 
     // DeepSeek 余额:启动即拉取,之后每 60s 刷新
     refreshBalance();

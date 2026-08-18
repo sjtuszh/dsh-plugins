@@ -298,6 +298,24 @@ window.__ModuleLoader__.load({
       var tab = tabState[0], setTab = tabState[1];
       var periodState = react.useState('today');
       var period = periodState[0], setPeriod = periodState[1];
+      // 总量统计实时数据:轮询 costglobal/snapshot(由 dsh-cost-panel-mount 挂载),
+      // 任何会话窗口打开都取同一份最新全局统计,不依赖本会话投影推送的快照。
+      var liveGlobalState = react.useState(null);
+      var liveGlobal = liveGlobalState[0], setLiveGlobal = liveGlobalState[1];
+      var refreshGlobal = function () {
+        try {
+          ctx.remote.costglobal.snapshot().then(function (r) {
+            if (r && typeof r === 'object') setLiveGlobal(r);
+          }).catch(function () {});
+        } catch (e) {}
+      };
+      // 打开统计弹窗时拉取一次 + 每 10s 轮询
+      react.useEffect(function () {
+        if (!showStats) return;
+        refreshGlobal();
+        var iv = setInterval(refreshGlobal, 10000);
+        return function () { clearInterval(iv); };
+      }, [showStats]);
       var bubblesState = react.useState([]);
       var bubbles = bubblesState[0], setBubbles = bubblesState[1];
       var lastSeq = react.useRef(0);
@@ -401,8 +419,8 @@ window.__ModuleLoader__.load({
       };
 
       var renderGlobalStats = function () {
-        if (!proj || !proj.global) return react.createElement('div', { className: 'dsc-empty' }, '统计加载中…(需重启 dsh web 后生效)');
-        var g = proj.global;
+        var g = liveGlobal || (proj && proj.global);
+        if (!g) return react.createElement('div', { className: 'dsc-empty' }, '统计加载中…');
         var bal = g.balance;
         var label = g.label || { today: '', month: '' };
         var data = period === 'today'
@@ -493,7 +511,7 @@ window.__ModuleLoader__.load({
       );
     }
 
-    var inject = ["slots"];
+    var inject = ["slots", "remote", "remote.costglobal"];
     function apply(ctx) {
       ctx.slots.inject("conversation.session.header.actions", function () {
         return ctx.slots.register(
