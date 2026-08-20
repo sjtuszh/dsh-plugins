@@ -224,7 +224,17 @@ export default {
             await sleep(600, signal)
             continue
           }
-          const texts = assistantTexts(snap)
+          // 只收集 afterSeq 之后的新 assistant 消息：冷恢复会先写 turn 开始等事件
+          // （seq 前进但 assistant 还是旧文），必须按事件 seq 过滤，否则误取旧回复。
+          const texts = []
+          for (const e of snap.events) {
+            if (e.type !== 'assistant/message') continue
+            if (afterSeq != null && e.seq <= afterSeq) continue
+            const blocks = e.data && e.data.message && e.data.message.content
+            if (!Array.isArray(blocks)) continue
+            const text = blocks.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n')
+            if (text.trim().length > 0) texts.push(text)
+          }
           const cur = texts.length > 0 ? texts[texts.length - 1] : ''
           if (seq === lastSeq && cur === lastText) {
             stable += 1
