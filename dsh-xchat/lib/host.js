@@ -445,9 +445,21 @@ export default {
             const beforeSeq = await currentSeq(entry.childId)
             await ctx.subagents.followup(parent, entry.childId, [textBlock(request)], { source, signal: exec.signal })
             const wait = await waitForReply(entry.childId, exec.signal, config.waitTimeoutMs, beforeSeq, entry.lastReply)
+            const prevReply = entry.lastReply
             const reply = wait.reply || (await currentReply(entry.childId))
             entry.lastReply = reply
-            return { ok: true, childId: entry.childId, target: entry.targetLabel || target, reply, ...(wait.timedOut && !reply ? { note: '4 分钟内无新增文本回复，可继续 ask 或 stop' } : {}) }
+            const isStale = reply.length > 0 && prevReply === reply
+            // 诊断：未等到新回复（超时或复读）时返回子代理 surface 状态，定位冷恢复问题。
+            let diag = ''
+            if ((wait.timedOut && !reply) || isStale) {
+              try {
+                const snap = await ctx.sessionQuery.readSurface(entry.childId)
+                const evs = snap && Array.isArray(snap.events) ? snap.events : []
+                const last = evs.length ? evs[evs.length - 1] : null
+                diag = ' [diag beforeSeq=' + beforeSeq + ' last=' + (last ? last.type + '@' + last.seq : 'none') + ' events=' + evs.length + ' stale=' + isStale + ']'
+              } catch (e) { diag = ' [diag surface-err]' }
+            }
+            return { ok: true, childId: entry.childId, target: entry.targetLabel || target, reply, ...(((wait.timedOut && !reply) || isStale) ? { note: '未等到新回复（复读旧文）' + diag } : {}) }
           }
           if (action === 'stop') {
             const entry = await findEntry()
