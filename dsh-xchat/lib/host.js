@@ -387,12 +387,18 @@ export default {
               '输出要求：把与该请求相关的关键信息组织成清晰、结构化、可直接引用的回复（关键文件路径、命令、结论、决策依据、数字等）；如果记忆中确实没有相关信息，请明确说明缺了什么。',
               '约束：你只负责信息提取与整理，不要执行文件或命令操作，不要调用工具。'
             ].join('\n')
-            // 模型路由：auto=继承目标会话；custom=设置面板指定的 provider/model。
+            // 模型路由：custom=设置面板指定的 provider/model；否则显式用调用者（A）的
+            // 模型路由。必须显式传入 agentOptions——若不传，子代理 descriptor 无路由，
+            // 冷恢复（ask 时）组装 persona 会因 {{model}} 无值而失败、不产新回复。
             // 注意：外层已有 `const request`（工具参数），这里必须用不同名字，
             // 否则同作用域 const 重复声明 → TDZ → start 分支必炸。
             const forkRequest = { parent: g.agent, prompt: [textBlock(promptText)] }
+            const callerProvider = agent.options && agent.options.provider
+            const callerModel = agent.options && agent.options.model
             if (config.modelMode === 'custom' && config.modelProvider && config.modelId) {
               forkRequest.agentOptions = { provider: config.modelProvider, model: config.modelId }
+            } else if (callerProvider && callerModel) {
+              forkRequest.agentOptions = { provider: callerProvider, model: callerModel }
             }
             const started = await ctx.subagents.startContinuable({
               provider: 'fork',
