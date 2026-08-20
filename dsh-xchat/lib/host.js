@@ -448,18 +448,15 @@ export default {
             const prevReply = entry.lastReply
             const reply = wait.reply || (await currentReply(entry.childId))
             entry.lastReply = reply
-            const isStale = reply.length > 0 && prevReply === reply
-            // 诊断：未等到新回复（超时或复读）时返回子代理 surface 状态，定位冷恢复问题。
+            // 诊断：总是返回子代理 surface 状态，定位 ask 冷恢复/唤醒问题。
             let diag = ''
-            if ((wait.timedOut && !reply) || isStale) {
-              try {
-                const snap = await ctx.sessionQuery.readSurface(entry.childId)
-                const evs = snap && Array.isArray(snap.events) ? snap.events : []
-                const last = evs.length ? evs[evs.length - 1] : null
-                diag = ' [diag beforeSeq=' + beforeSeq + ' last=' + (last ? last.type + '@' + last.seq : 'none') + ' events=' + evs.length + ' stale=' + isStale + ']'
-              } catch (e) { diag = ' [diag surface-err]' }
-            }
-            return { ok: true, childId: entry.childId, target: entry.targetLabel || target, reply, ...(((wait.timedOut && !reply) || isStale) ? { note: '未等到新回复（复读旧文）' + diag } : {}) }
+            try {
+              const snap = await ctx.sessionQuery.readSurface(entry.childId)
+              const evs = snap && Array.isArray(snap.events) ? snap.events : []
+              const last = evs.length ? evs[evs.length - 1] : null
+              diag = ' beforeSeq=' + beforeSeq + ' cap=' + (snap && snap.capturedThroughSeq) + ' last=' + (last ? last.type + '@' + last.seq : 'none') + ' events=' + evs.length + ' stale=' + (reply.length > 0 && prevReply === reply)
+            } catch (e) { diag = ' surface-err' }
+            return { ok: true, childId: entry.childId, target: entry.targetLabel || target, reply, note: 'ask 完成（diag:' + diag + '）' }
           }
           if (action === 'stop') {
             const entry = await findEntry()

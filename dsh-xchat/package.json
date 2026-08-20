@@ -1,6 +1,6 @@
 {
   "name": "dsh-xchat",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "跨会话知识桥（DSH 静态插件）：@ 任意位置触发会话候选（自绘菜单，跟随主题）+ 拖拽会话到聊天窗；xchat_query 工具（在目标会话名下拉起继承其记忆的 fork 子代理，跨会话询问/追问/结束，用完归档删除）。随 dsh profile 启动自动加载。",
   "type": "module",
   "main": "lib/host.js",
