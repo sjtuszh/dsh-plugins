@@ -207,7 +207,7 @@ export default {
       }
     }
 
-    async function waitForReply(childId, signal, timeoutMs, afterSeq) {
+    async function waitForReply(childId, signal, timeoutMs, afterSeq, notText) {
       const deadline = Date.now() + timeoutMs
       let stable = 0
       let lastText = ''
@@ -236,6 +236,11 @@ export default {
             if (text.trim().length > 0) texts.push(text)
           }
           const cur = texts.length > 0 ? texts[texts.length - 1] : ''
+          // 兜底：若 afterSeq 失效（读不到基线），忽略与已知旧回复相同的文本。
+          if (notText && cur === notText) {
+            await sleep(600, signal)
+            continue
+          }
           if (seq === lastSeq && cur === lastText) {
             stable += 1
             if (stable >= 4 && cur.length > 0) return { reply: cur, done: true, timedOut: false }
@@ -410,9 +415,11 @@ export default {
                 }
               }
             } catch (e) { /* 标题设置失败不影响主流程 */ }
-            active.push({ childId: started.childId, targetId: resolved.id, callerId, parentAgent: g.agent, resumed: g.resumed, targetLabel: target })
+            active.push({ childId: started.childId, targetId: resolved.id, callerId, parentAgent: g.agent, resumed: g.resumed, targetLabel: target, lastReply: '' })
             const wait = await waitForReply(started.childId, exec.signal, config.waitTimeoutMs)
             const reply = wait.reply || (await currentReply(started.childId))
+            const entry0 = active.find((v) => v.childId === started.childId)
+            if (entry0) entry0.lastReply = reply
             return { ok: true, childId: started.childId, target, reply, ...(wait.timedOut && !reply ? { note: '子代理已启动但 4 分钟内无文本回复，可 ask 追问' } : {}) }
           }
           if (action === 'ask') {
@@ -431,8 +438,9 @@ export default {
             // beforeSeq = followup 提交前的 seq 基线：只接受其后的新回复（修复 ask 复读旧文）。
             const beforeSeq = await currentSeq(entry.childId)
             await ctx.subagents.followup(parent, entry.childId, [textBlock(request)], { source, signal: exec.signal })
-            const wait = await waitForReply(entry.childId, exec.signal, config.waitTimeoutMs, beforeSeq)
+            const wait = await waitForReply(entry.childId, exec.signal, config.waitTimeoutMs, beforeSeq, entry.lastReply)
             const reply = wait.reply || (await currentReply(entry.childId))
+            entry.lastReply = reply
             return { ok: true, childId: entry.childId, target: entry.targetLabel || target, reply, ...(wait.timedOut && !reply ? { note: '4 分钟内无新增文本回复，可继续 ask 或 stop' } : {}) }
           }
           if (action === 'stop') {
