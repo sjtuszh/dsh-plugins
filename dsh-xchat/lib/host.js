@@ -394,7 +394,16 @@ export default {
             const entry = await findEntry()
             if (!entry) return { ok: false, note: '本会话没有找到活跃子代理，请先用 start 创建' }
             if (!request) return { ok: false, note: 'ask 需要 request（追问内容）' }
-            await ctx.subagents.followup(entry.parentAgent, entry.childId, [textBlock(request)], { source, signal: exec.signal })
+            // 刷新父 agent：entry.parentAgent 可能是早期 resume 的临时 handle，
+            // 若目标会话已关闭/被平台释放，followup 的 parent 会失效（子代理收不到唤醒）。
+            // 取当前 live 的 agent，没有再 resume 一个，并回写 entry。
+            let parent = ctx.agents.get(entry.targetId)
+            if (!parent) {
+              const g = await getParentAgent(entry.targetId, exec.signal)
+              parent = g.agent
+              entry.parentAgent = parent
+            }
+            await ctx.subagents.followup(parent, entry.childId, [textBlock(request)], { source, signal: exec.signal })
             const wait = await waitForReply(entry.childId, exec.signal, config.waitTimeoutMs)
             const reply = wait.reply || (await currentReply(entry.childId))
             return { ok: true, childId: entry.childId, target: entry.targetLabel || target, reply, ...(wait.timedOut && !reply ? { note: '4 分钟内无新增文本回复，可继续 ask 或 stop' } : {}) }
