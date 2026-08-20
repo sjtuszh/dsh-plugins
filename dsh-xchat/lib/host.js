@@ -198,7 +198,16 @@ export default {
       }
     }
 
-    async function waitForReply(childId, signal, timeoutMs) {
+    async function currentSeq(childId) {
+      try {
+        const snap = await ctx.sessionQuery.readSurface(childId)
+        return snap && snap.capturedThroughSeq != null ? snap.capturedThroughSeq : -1
+      } catch (e) {
+        return -1
+      }
+    }
+
+    async function waitForReply(childId, signal, timeoutMs, afterSeq) {
       const deadline = Date.now() + timeoutMs
       let stable = 0
       let lastText = ''
@@ -208,9 +217,15 @@ export default {
         let snap = null
         try { snap = await ctx.sessionQuery.readSurface(childId) } catch (e) { snap = null }
         if (snap) {
+          const seq = snap.capturedThroughSeq != null ? snap.capturedThroughSeq : -1
+          // ask 场景：只接受 afterSeq（followup 提交前的基线）之后的新事件。
+          // 否则冷恢复期间 surface 无变化会被误判为「回复稳定」，提前返回旧文本。
+          if (afterSeq != null && seq <= afterSeq) {
+            await sleep(600, signal)
+            continue
+          }
           const texts = assistantTexts(snap)
           const cur = texts.length > 0 ? texts[texts.length - 1] : ''
-          const seq = snap.capturedThroughSeq != null ? snap.capturedThroughSeq : -1
           if (seq === lastSeq && cur === lastText) {
             stable += 1
             if (stable >= 4 && cur.length > 0) return { reply: cur, done: true, timedOut: false }
@@ -403,8 +418,10 @@ export default {
               parent = g.agent
               entry.parentAgent = parent
             }
+            // beforeSeq = followup 提交前的 seq 基线：只接受其后的新回复（修复 ask 复读旧文）。
+            const beforeSeq = await currentSeq(entry.childId)
             await ctx.subagents.followup(parent, entry.childId, [textBlock(request)], { source, signal: exec.signal })
-            const wait = await waitForReply(entry.childId, exec.signal, config.waitTimeoutMs)
+            const wait = await waitForReply(entry.childId, exec.signal, config.waitTimeoutMs, beforeSeq)
             const reply = wait.reply || (await currentReply(entry.childId))
             return { ok: true, childId: entry.childId, target: entry.targetLabel || target, reply, ...(wait.timedOut && !reply ? { note: '4 分钟内无新增文本回复，可继续 ask 或 stop' } : {}) }
           }
