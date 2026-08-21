@@ -1,6 +1,6 @@
 {
   "name": "dsh-organizer-sidebar",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "DeepSeek Harness 会话侧边栏组织器（DSH 静态插件）:拖拽排序/分组、归档/删除(回收站)双 tab、批量还原删除、Typert remote 持久化。随 dsh profile 启动自动加载,无需批准。可用 `dsh plugin --profile <name> add dsh-organizer-sidebar` 一键安装。",
   "type": "module",
   "main": "lib/host.js",

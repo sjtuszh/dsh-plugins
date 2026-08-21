@@ -15,14 +15,19 @@
 // ============================================================================
 
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 const FILE_NAME = '.dsh-session-organizer.json';
 const DELETED_FILE_NAME = '.dsh-session-organizer-deleted.json';
-// 固定脚本路径:避免每处拼接;纯 ASCII/BOM 控制见各方法注释。
-const SCRIPT_DIR = 'C:\\Users\\22320\\.dsh';
-const DELETE_SCRIPT = SCRIPT_DIR + '\\dsh-delete-session.ps1';
-const RESTORE_SCRIPT = SCRIPT_DIR + '\\dsh-restore-session.ps1';
-const STATE_DIR = SCRIPT_DIR + '\\session-organizer';
+// DSH_HOME:环境变量优先,回退到 $HOME/.dsh(官方 dsh-credentials-local 同款)。
+// 不硬编码用户路径,保证 npm 包在任意机器可移植。
+const DSH_HOME = process.env.DSH_HOME || join(homedir(), '.dsh');
+// PowerShell 脚本目录 + 状态数据目录:纯 ASCII/BOM 控制见各方法注释。
+const SCRIPT_DIR = DSH_HOME;
+const DELETE_SCRIPT = join(SCRIPT_DIR, 'dsh-delete-session.ps1');
+const RESTORE_SCRIPT = join(SCRIPT_DIR, 'dsh-restore-session.ps1');
+const STATE_DIR = join(SCRIPT_DIR, 'session-organizer');
 
 class SessionOrganizerService extends TypertRemoteService {
   // ---- 内部工具 ----
