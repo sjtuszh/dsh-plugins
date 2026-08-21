@@ -302,7 +302,10 @@ window.__ModuleLoader__.load({
       var liveGlobal = liveGlobalState[0], setLiveGlobal = liveGlobalState[1];
       var refreshGlobal = function () {
         try {
-          ctx.remote.costglobal.snapshot().then(function (r) {
+          // 单包内联挂载:用 ctx.get 惰性取服务(未挂载完成时为 undefined,不抛错)
+          var svc = ctx.get('remote.costglobal');
+          if (!svc) return;
+          svc.snapshot().then(function (r) {
             if (r && typeof r === 'object') setLiveGlobal(r);
           }).catch(function () {});
         } catch (e) {}
@@ -509,8 +512,29 @@ window.__ModuleLoader__.load({
       );
     }
 
-    var inject = ["slots", "remote", "remote.costglobal"];
+    // 单包方案:本 bundle 内联 Typert remote 描述符并自行挂载,
+    // 消费端用 ctx.get('remote.costglobal') 惰性访问(未挂载完成返回 undefined),
+    // 因此无需声明 "remote.costglobal" inject,避开自依赖死锁(MEMORY §4.3)。
+    var stubSchema = { parse: function (v) { return v; } };
+    var TYPERT_REMOTE = {
+      package: "dsh-cost-panel",
+      descriptors: [
+        {
+          id: "dsh-cost-panel#costglobal/snapshot",
+          service: "costglobal",
+          namespace: "costglobal",
+          method: "snapshot",
+          invocation: { kind: "direct" },
+          parameters: [],
+          result: { mode: "strict", typeSymbol: "dsh-cost-panel/types#CostGlobalSnapshot", schema: stubSchema },
+          sourceLocation: { file: "dsh-cost-panel/lib/host.js", line: 1, column: 1 },
+        },
+      ],
+    };
+
+    var inject = ["slots", "remote"];
     function apply(ctx) {
+      var mount = ctx.remote.$mount(TYPERT_REMOTE);
       ctx.slots.inject("conversation.session.header.actions", function () {
         return ctx.slots.register(
           { name: "conversation.session.header.actions", id: "dshcost", order: 30 },
@@ -518,6 +542,7 @@ window.__ModuleLoader__.load({
             return react.createElement(CostChip, { sessionId: props.sessionId, useProjection: props.useProjection });
           });
       });
+      return mount;
     }
     exports.apply = apply;
     exports.inject = inject;
