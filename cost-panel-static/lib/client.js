@@ -116,8 +116,6 @@ window.__ModuleLoader__.load({
       'deepseek-v4-pro': '#1d4ed8',
       'gpt-5.6-sol': '#7c3aed',
       'gpt-5.6-terra': '#0891b2',
-      'gpt-5.5': '#059669',
-      'gpt-5.4-mini': '#d97706',
       'gpt-5.4': '#dc2626',
     };
     var PALETTE = ['#3b82f6', '#22c55e', '#a78bfa', '#f59e0b', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#14b8a6', '#8b5cf6'];

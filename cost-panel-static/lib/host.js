@@ -28,11 +28,10 @@ const CREDIT_TO_RMB = 0.4;
 const NEW_PRICING_MS = Date.UTC(2026, 7, 17, 0, 0, 0) - 8 * 3600e3;
 const HISTORY_CAP = 500;
 
+// 仅保留当前已配置的 Relay 模型(其余模型按 DEFAULT_RELAY 兜底)
 const RELAY_RATES = {
   'gpt-5.6-sol': { input: 5, output: 40, cacheRead: 0.5, cacheWrite: 5 },
   'gpt-5.6-terra': { input: 2.5, output: 20, cacheRead: 0.25, cacheWrite: 3.125 },
-  'gpt-5.5': { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 5 },
-  'gpt-5.4-mini': { input: 0.75, output: 4.5, cacheRead: 0, cacheWrite: 0.75 },
   'gpt-5.4': { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 2.5 },
 };
 const DEFAULT_RELAY = 'gpt-5.4';
