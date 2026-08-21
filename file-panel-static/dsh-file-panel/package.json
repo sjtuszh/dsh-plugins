@@ -1,10 +1,9 @@
 {
   "name": "dsh-file-panel",
   "version": "1.0.0",
-  "private": true,
-  "description": "文件树浏览面板(静态版):shell.overlay 浮动文件栏,Typert remote RPC 列目录/打开系统文件管理器",
   "type": "module",
   "main": "lib/host.js",
+  "description": "DeepSeek Harness 文件树浏览面板:shell.overlay 浮动文件栏,Typert remote 列目录/打开系统文件管理器(单包,自挂载 remote)。",
   "exports": {
     ".": "./lib/host.js",
     "./client": "./lib/client.js",
@@ -12,12 +11,29 @@
     "./remote": "./lib/typert.remote-client.js",
     "./package.json": "./package.json"
   },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sjtuszh/dsh-plugins.git"
+  },
+  "dependencies": {
+    "zod": "^4"
+  },
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-api-remotes",
+        "@deepseek-ai/dsh-api-remotes",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-conversation"
       ]

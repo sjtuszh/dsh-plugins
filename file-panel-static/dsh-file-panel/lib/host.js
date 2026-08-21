@@ -1,5 +1,5 @@
 // ============================================================================
-// 文件树浏览面板 — Host 半边(静态版 v5)
+// 文件树浏览面板 — Host 半边(静态版 v6, npm-ready)
 // ----------------------------------------------------------------------------
 // 关键(踩坑实录, MEMORY §11.4):Typert 网关调用时校验服务对象身上的
 // `typertRemote` 绑定(`validateBinding` 源码确认)——普通 `ctx.provide({...})`
@@ -8,10 +8,18 @@
 // `ctx.reflect.provide(key, this)` 注册服务 + 打上 {service, serviceKey, namespace}
 // 绑定,随 fiber 卸载自动注销。@Remote 装饰器仅 SRC 模式需要,strict 清单不需要。
 //
-// reveal 仍走「临时 .cmd 文件 + cmd /c」方案绕开 Node argv 引号转义。
+// reveal:直接打开目标目录(文件→父目录,文件夹→自身),命令写入临时 .cmd 文件
+// (fs.writeText 不经 argv 序列化)再 cmd /c 执行;不用 explorer /select,
+// (经 cmd 传递解析不可靠,实测开错目录)。
+// 路径参数化:DSH_HOME 环境变量优先,缺省 ~/.dsh —— 发布到 npm 后其他机器可用。
 // ============================================================================
 
+import { homedir } from 'node:os';
+import { join, dirname } from 'node:path';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
+
+const DSH_HOME = process.env.DSH_HOME || join(homedir(), '.dsh');
+const REVEAL_SCRIPT = join(DSH_HOME, 'dsh-reveal.cmd');
 
 const nativeOf = (p) => {
   if (p.indexOf('\\') !== -1) return p;
@@ -58,17 +66,15 @@ class FileTreeService extends TypertRemoteService {
     try {
       const sep = path.indexOf('\\') !== -1 ? '\\' : '/';
       const idx = path.lastIndexOf(sep);
-      // v6:不再用 /select,(经 cmd 传递解析不可靠,实测会开错目录),
-      // 直接打开目标目录:文件→父目录,文件夹→自身。
+      // 不用 /select,:直接打开目标目录——文件→父目录,文件夹→自身。
       const targetDir = kind === 'dir' ? path : (idx > 0 ? path.slice(0, idx) : path);
-      const scriptPath = 'C:\\Users\\22320\\.dsh\\dsh-reveal.cmd';
       const line = 'explorer.exe "' + targetDir + '"';
-      const target = await fs.resolve(scriptPath);
+      const target = await fs.resolve(REVEAL_SCRIPT);
       await fs.writeText(target, '@echo off\r\nchcp 65001 >nul\r\n' + line + '\r\n');
       const cmd = await subprocess.resolveExecutable('cmd.exe');
       subprocess.spawn({
-        argv: [cmd, '/c', scriptPath],
-        cwd: 'C:\\Users\\22320\\.dsh',
+        argv: [cmd, '/c', REVEAL_SCRIPT],
+        cwd: dirname(REVEAL_SCRIPT),
         stdio: { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' },
         graceMs: 5000,
       });

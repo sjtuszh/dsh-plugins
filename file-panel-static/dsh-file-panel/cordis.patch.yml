@@ -1,0 +1,5 @@
+# 文件树浏览面板 UI 包 —— 组合插入行。
+# dsh plugin add dsh-file-panel 后,dsh 凭 dsh.bundle.patch 自动应用本补丁。
+- insert:
+    - id: file-panel
+      name: dsh-file-panel

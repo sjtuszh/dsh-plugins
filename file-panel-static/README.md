@@ -1,6 +1,6 @@
 # 文件树浏览面板 · 静态版（profile 挂载）
 
-与动态版（`dsh-plugins/` 工作区里的 cordis_define 定义）功能等价，但以**静态插件**挂载：
+与动态版（`dsh-plugins/file-panel/` 的 cordis_define 定义）功能等价，但以**静态插件**挂载：
 随 `dsh web` 启动自动加载，进程重启、浏览器刷新都不需要任何操作，无需批准。
 
 ## 功能
@@ -19,59 +19,64 @@
 
 | 维度 | 动态版 | 静态版 |
 |---|---|---|
-| 数据通道 | Host `harness.handle` RPC + 客户端轮询 | **Typert remote**：Host 服务继承 `TypertRemoteService`（构造即注册 + 打 `typertRemote` 绑定，**普通 `ctx.provide` 会被网关拒收**，见 MEMORY §11.4b），typert 清单注册 `filetree/list`、`filetree/reveal` 端点，客户端 `ctx.remote.filetree.*` 调用 |
-| 挂载 | 单包，一行 | **双包**（MEMORY §5.2 双条目方案）：`dsh-file-panel`（UI，消费 `remote.filetree`）+ `dsh-file-panel-mount`（仅 `$mount` 描述符，防 §4.3 自依赖死锁） |
-| 安装 | cordis_define + 批准 | 复制包 + patch 行 + 重启 |
+| 数据通道 | Host `harness.handle` RPC + 客户端轮询 | **Typert remote**：Host 服务继承 `TypertRemoteService`（构造即注册 + 打 `typertRemote` 绑定，**普通 `ctx.provide` 会被网关拒收**，见 MEMORY §11.4b），typert 清单注册 `filetree/list`、`filetree/reveal` 端点 |
+| remote 挂载 | — | **单包自挂载**（参照已验证的 organizer 单包模式）：client.js 的 apply 内 fire-and-forget `ctx.remote.$mount(TYPERT_REMOTE)`（不能 await，否则阻塞 UI 注册），调用走 `ctx.get("remote.filetree")` + `whenRemoteReady` 门控；inject 只声明 `["slots","remote"]`，不声明点号路径（避免自依赖死锁） |
+| 安装 | cordis_define + 批准 | 复制包 + patch 行 + 重启，或 `dsh plugin add dsh-file-panel` |
 
 ## 目录结构
 
 ```
 file-panel-static/
 ├── README.md
-├── dsh-file-panel/              # 主包（UI + Host 服务 + typert 清单）
-│   ├── package.json
-│   └── lib/
-│       ├── host.js              # FileTreeService extends TypertRemoteService（注册 + 绑定）
-│       ├── typert.host.js       # TYPERT 清单（zod v4 真 schema）
-│       ├── typert.remote-client.js  # TYPERT_REMOTE 描述符（恒等桩，仅供文档参考）
-│       └── client.js            # UI bundle（ModuleLoader 工厂，inject slots/remote/remote.filetree）
-└── dsh-file-panel-mount/        # 挂载包（双条目方案 A）
-    ├── package.json
+└── dsh-file-panel/              # 单包（UI + Host 服务 + typert 清单 + remote 自挂载）
+    ├── package.json             # dsh.bundle.patch / files / zod 依赖 / MIT
+    ├── cordis.patch.yml         # 一行 insert（dsh plugin add 自动应用）
+    ├── README.md / LICENSE
     └── lib/
-        ├── host.js              # 空 Host
-        └── client.js            # 仅 ctx.remote.$mount(TYPERT_REMOTE)（内联描述符）
+        ├── host.js              # FileTreeService extends TypertRemoteService（注册 + 绑定，路径参数化 DSH_HOME）
+        ├── typert.host.js       # TYPERT 清单（zod v4 真 schema）
+        ├── typert.remote-client.js  # TYPERT_REMOTE 描述符（恒等桩，client.js 内联同款，供参考）
+        └── client.js            # UI bundle（ModuleLoader 工厂，inject slots/remote + 自 $mount + whenRemoteReady）
 ```
 
 ## 安装 / 更新
 
-1. 复制包（`nodeLinker: hoisted`，手动复制即可）：
+1. 复制包（`nodeLinker: hoisted`，手动复制即可；`typert.host.js` 需 zod v4——本机 hoisted 根已有 `profiles/node_modules/zod`，干净环境用 npm 安装）：
 
    ```powershell
    $dst = "$HOME\.dsh\profiles\web\node_modules"
-   Copy-Item -Recurse dsh-file-panel        $dst\dsh-file-panel
-   Copy-Item -Recurse dsh-file-panel-mount  $dst\dsh-file-panel-mount
-   # typert.host.js 需要 zod v4（import { z } from 'zod'）——从 dsh 安装目录复制：
-   Copy-Item -Recurse "<dsh>\node_modules\zod" $dst\zod
+   Copy-Item -Recurse dsh-file-panel $dst\dsh-file-panel
    ```
 
-2. `profiles/web/cordis.patch.yml` 加两行（注意：必须与现有 `- insert:` 同级、同一列表）：
+2. `profiles/web/cordis.patch.yml` 加一行（注意：必须与现有 `- insert:` 同级、同一列表）：
 
    ```yaml
    - insert:
        - id: file-panel
          name: dsh-file-panel
-       - id: file-panel-mount
-         name: dsh-file-panel-mount
    ```
 
 3. 重启 `dsh web`。`client.js` 改动刷新浏览器即可（rev 按文件哈希）；`host.js` / typert / patch 改动必须重启。
 
 > ⚠️ **同时使用动态版会重复**：静态版挂载后请先 `cordis_stop` / 不再定义动态版，否则页面会出现两个 📁。
 
+## 发布到 npm（npm-ready）
+
+单包已按可发布形态维护（`dsh.bundle.patch` + `dsh.client.inject`（官方包名 `@deepseek-ai/dsh-api-remotes`）+ `files` 白名单 + LICENSE + README + zod 依赖 + **路径参数化**：reveal 脚本经 `process.env.DSH_HOME || ~/.dsh` 解析，无硬编码）：
+
+```powershell
+cd dsh-file-panel
+npm pack --pack-destination .    # 预检（8 文件：lib 4 + package.json + README + LICENSE + cordis.patch.yml）
+npm publish                      # 需 npm whoami 已登录；每次发布前 bump version
+```
+
+用户安装：`dsh plugin --profile web add dsh-file-panel`
+（pnpm v11 minimumReleaseAge 拒装刚发布的包 → 用 `add dsh-file-panel@<version>` 钉版本）。
+
 ## 回滚（回到动态版）
 
-1. 删除 `cordis.patch.yml` 中的 `file-panel`、`file-panel-mount` 两个 insert 行。
-2. 删除 `profiles/web/node_modules/dsh-file-panel`、`dsh-file-panel-mount`、`zod`（若仅为本插件复制）。
+1. 删除 `cordis.patch.yml` 中的 `file-panel` insert 行。
+2. 删除 `profiles/web/node_modules/dsh-file-panel`。
 3. 重启 `dsh web`，再走动态版流程。
 
 ## 预检（不必重启即可跑）
@@ -80,13 +85,12 @@ file-panel-static/
 node --check dsh-file-panel/lib/host.js
 node --check dsh-file-panel/lib/typert.host.js
 node --check dsh-file-panel/lib/client.js
-node --check dsh-file-panel-mount/lib/client.js
-dsh --profile web --dump-config   # 确认组合树含 file-panel 两行
+dsh --profile web --dump-config   # 确认组合树含 file-panel 行
 ```
 
-## 已知风险（首次静态化，按 MEMORY §4/§5 实录）
+## 已知风险（首次静态化，按 MEMORY §4/§5/§11 实录）
 
-- 静态客户端 ctx 是代理，**未声明即访问会抛错**：UI 包必须 `inject: ["slots","remote","remote.filetree"]`。
-- 双条目顺序由依赖保证：mount 包先 `$mount` 出 `remote.filetree`，UI 包才激活。
-- 若挂载后 UI 不出现：检查（a）patch 两行是否都在；（b）`dsh --profile web --dump-config` 组合树；（c）typert 清单校验错误（会在启动日志报 `typert-loader: dsh-file-panel …`）。
-- zod 依赖：本机已验证 dsh 自带 zod v4.4.3，按上文复制即可；换环境时确认版本兼容（清单校验要求 zod v4，`_zod` 标记）。
+- 静态客户端 ctx 是代理：inject 只声明 `["slots","remote"]`；`ctx.get("remote.filetree")` 在守卫里 requireDeclaration=false，不检查声明（organizer 验证过的单包正解）。
+- `$mount` 异步完成：**不能 await**（阻塞 UI 注册），必须 fire-and-forget + `whenRemoteReady` 门控。
+- 若挂载后 UI 不出现：检查（a）patch 行是否在；（b）`dsh --profile web --dump-config` 组合树；（c）typert 清单校验错误（启动日志 `typert-loader: dsh-file-panel …`）。
+- zod 依赖：清单校验要求 zod v4（`_zod` 标记），已列为 `dependencies: { "zod": "^4" }`。

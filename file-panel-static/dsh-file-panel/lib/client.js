@@ -1,17 +1,17 @@
 // ============================================================================
-// 文件树浏览面板 — Client 半边(静态版 bundle v2)
+// 文件树浏览面板 — Client 半边(静态版 bundle v7,单包合并)
 // ----------------------------------------------------------------------------
 // 注册进 shell.overlay(root 级浮动层):
 //  1. 右侧浮动 📁 小按钮,点击滑出右侧文件栏;
 //  2. 文件栏以当前会话 cwd 为根(useSessions 标准 props),目录懒加载;
 //  3. 每个文件/文件夹行右侧 ⋯ 菜单:复制文件地址 / 打开文件浏览器查看。
-// RPC 走 Typert remote(ctx.remote.filetree.*),由 dsh-file-panel-mount 包
-// 挂载描述符;本包只消费(inject ["remote","remote.filetree"]),避免自依赖死锁。
 //
-// v2 变更(与动态版一致):
-//  - 图标贴面板左缘(open 时 right:310px);
-//  - 面板实底(layer-1),行悬停 layer-2(深色主题更亮,不再发黑);
-//  - 每次点击 📁 刷新;打开时每 30s 自动刷新(window.setInterval)。
+// 单包模式(参照已验证的 dsh-organizer-sidebar):
+//  - 原 mount 包并入本包:apply 里 fire-and-forget `ctx.remote.$mount(TYPERT_REMOTE)`
+//    (不能 await——$mount 经 enqueue 队列异步完成,await 会阻塞 UI 注册);
+//  - inject 只声明 ["slots","remote"],**不声明** remote.filetree(避免自依赖死锁);
+//  - 调用走 `ctx.get("remote.filetree")`(守卫 requireDeclaration=false,不检查声明)
+//    + `whenRemoteReady` 门控等 $mount 完成。
 // 注意:组件定义在 apply 内部闭包捕获 ctx(模块顶层没有 ctx)。
 // ============================================================================
 
@@ -62,9 +62,76 @@ window.__ModuleLoader__.load({
       document.head.appendChild(tag);
     }
 
-    var inject = ["slots", "remote", "remote.filetree"];
+    var inject = ["slots", "remote"];
 
     function apply(ctx) {
+      // Typert remote 描述符(原 mount 包内联,单包合并后本包自带)
+      var stubSchema = { parse: function (v) { return v; } };
+      var TYPERT_REMOTE = {
+        package: "dsh-file-panel",
+        descriptors: [
+          {
+            id: "dsh-file-panel#filetree/list",
+            service: "filetree",
+            namespace: "filetree",
+            method: "list",
+            invocation: { kind: "direct" },
+            parameters: [
+              {
+                name: "request",
+                wire: "request",
+                source: "json",
+                codec: { mode: "strict", typeSymbol: "dsh-file-panel/types#FileTreeListRequest", schema: stubSchema },
+              },
+            ],
+            result: { mode: "strict", typeSymbol: "dsh-file-panel/types#FileTreeListResult", schema: stubSchema },
+            sourceLocation: { file: "dsh-file-panel/lib/host.js", line: 1, column: 1 },
+          },
+          {
+            id: "dsh-file-panel#filetree/reveal",
+            service: "filetree",
+            namespace: "filetree",
+            method: "reveal",
+            invocation: { kind: "direct" },
+            parameters: [
+              {
+                name: "request",
+                wire: "request",
+                source: "json",
+                codec: { mode: "strict", typeSymbol: "dsh-file-panel/types#FileTreeRevealRequest", schema: stubSchema },
+              },
+            ],
+            result: { mode: "strict", typeSymbol: "dsh-file-panel/types#FileTreeRevealResult", schema: stubSchema },
+            sourceLocation: { file: "dsh-file-panel/lib/host.js", line: 1, column: 1 },
+          },
+        ],
+      };
+
+      // $mount 经 enqueue 队列异步完成,不能 await(否则阻塞 UI 注册)→ fire-and-forget + 门控
+      var mp = null;
+      try {
+        mp = ctx.remote.$mount(TYPERT_REMOTE);
+      } catch (e) {
+        mp = null;
+      }
+      var remoteReady = false;
+      var remoteWaiters = [];
+      function whenRemoteReady() {
+        if (remoteReady) return Promise.resolve();
+        return new Promise(function (resolve) { remoteWaiters.push(resolve); });
+      }
+      if (mp && typeof mp.then === 'function') {
+        mp.then(function () {
+          remoteReady = true;
+          remoteWaiters.forEach(function (w) { w(); });
+          remoteWaiters = [];
+        }, function () {
+          console.error('[dsh-file-panel] remote $mount failed');
+        });
+      } else {
+        remoteReady = true;
+      }
+
       function FileTreePanel(props) {
         var useSessions = props.useSessions;
         var snap = typeof useSessions === 'function' ? useSessions(function (s) { return s; }) : null;
@@ -104,13 +171,22 @@ window.__ModuleLoader__.load({
             n[path] = { loading: true, error: null, items: (t[path] && t[path].items) || [] };
             return n;
           });
-          var p = null;
-          try {
-            p = ctx.remote.filetree.list({ path: path });
-          } catch (e) {
-            p = null;
-          }
-          if (p && typeof p.then === 'function') {
+          var fail = function () {
+            delete loading.current[path];
+            setTree(function (t) {
+              var n = Object.assign({}, t);
+              n[path] = { loading: false, error: '加载失败', items: [] };
+              return n;
+            });
+          };
+          whenRemoteReady().then(function () {
+            var p = null;
+            try {
+              p = ctx.get("remote.filetree").list({ path: path });
+            } catch (e) {
+              p = null;
+            }
+            if (!(p && typeof p.then === 'function')) { fail(); return; }
             p.then(function (r) {
               delete loading.current[path];
               var res = r && r.ok ? r.value : null;
@@ -123,17 +199,8 @@ window.__ModuleLoader__.load({
                 };
                 return n;
               });
-            }, function () {
-              delete loading.current[path];
-              setTree(function (t) {
-                var n = Object.assign({}, t);
-                n[path] = { loading: false, error: '加载失败', items: [] };
-                return n;
-              });
-            });
-          } else {
-            delete loading.current[path];
-          }
+            }, fail);
+          }, fail);
         }
 
         function refresh() {
@@ -222,7 +289,6 @@ window.__ModuleLoader__.load({
         }
 
         function reveal(path, kind) {
-          var p = ctx.remote.filetree.reveal({ path: path, kind: kind });
           var finish = function (r) {
             var msg = '打开失败';
             if (r && r.ok && r.value) {
@@ -233,12 +299,20 @@ window.__ModuleLoader__.load({
             showToast(msg);
             setMenu(null);
           };
-          if (p && typeof p.then === 'function') {
-            p.then(finish, function () { showToast('打开失败'); setMenu(null); });
-          } else {
-            showToast('打开失败');
-            setMenu(null);
-          }
+          whenRemoteReady().then(function () {
+            var p = null;
+            try {
+              p = ctx.get("remote.filetree").reveal({ path: path, kind: kind });
+            } catch (e) {
+              p = null;
+            }
+            if (p && typeof p.then === 'function') {
+              p.then(finish, function () { showToast('打开失败'); setMenu(null); });
+            } else {
+              showToast('打开失败');
+              setMenu(null);
+            }
+          }, function () { showToast('打开失败'); setMenu(null); });
         }
 
         function openMenu(e, item) {

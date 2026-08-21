@@ -305,7 +305,13 @@ if (s.baseline === null) {
 ### 11.5 状态
 
 - 动态版 `file-1` 已迭代到 `pkg-4`（v2 样式/刷新 → v3 临时 .cmd 方案 → v4 整参引号形式），用户已验证定位正确。
-- 静态版：已装入 `profiles/web`（双包 + patch 三行：cost-panel/file-panel/file-panel-mount），组合树经 `dsh --profile web --dump-config` 验证；typert 清单过真实校验器；v5 host 改用 `TypertRemoteService`（绑定坑 §11.4b）。**重启验证中**——当前等待用户重启后确认。
+- 静态版：**单包化**（v7，用户要求"做一个包"）。已装入 `profiles/web`（单行 patch：file-panel；mount 包已从仓库/安装目录/patch 移除），组合树经 `dsh --profile web --dump-config` 验证；typert 清单过真实校验器；v5 host 改用 `TypertRemoteService`（绑定坑 §11.4b）。**重启验证中**。
+- **npm-ready 改造（2026-08，对照 @会话管理器 的 cost-panel/organizer 发布经验）**：
+  - `dsh-file-panel` 单包已补齐：`dsh.bundle.patch: ./cordis.patch.yml`（包内一行 insert）、`files` 白名单（lib/cordis.patch.yml/README/LICENSE）、`license`/`repository`、`dependencies: { zod: "^4" }`、**移除 `private: true`**。
+  - **inject 包名坑**：`dsh.client.inject` 里 `@deepseek-ai/dsh-client-api-remotes`（不存在）已改为 **`@deepseek-ai/dsh-api-remotes`**（organizer 踩过的坑）。
+  - **路径硬编码参数化**：file-panel host 的 reveal 脚本路径改为 `process.env.DSH_HOME || join(homedir(), '.dsh')`（`node:os`/`node:path`）；cost-panel-static 早已参数化。动态版 host 沙箱里 `process` 是 `undefined`（dsh-cordis-host-runner sandbox 源码确认），无法参数化——但动态版不进 npm，仅本地开发用。
+  - **单包自挂载模式（v7，参照已验证的 dsh-organizer-sidebar）**：client.js 的 apply 内 fire-and-forget `ctx.remote.$mount(TYPERT_REMOTE)`（**不能 await**——$mount 经 enqueue 队列异步完成，await 会阻塞 UI 注册）；inject 只声明 `["slots","remote"]`（不声明 remote 点号路径，避免自依赖死锁）；调用走 `ctx.get("remote.filetree")`（守卫 requireDeclaration=false）+ `whenRemoteReady` 门控。
+  - 验证：`npm pack --dry-run` 8 文件；`npm view dsh-file-panel` E404（名未占用）；typert 清单 + host 加载 + 绑定复验通过。
 - **下次静态化前必读**：§3（包/格式）、§4（守卫/死锁/ctx）、§5（双条目）、§6（分叉/投影）
 
 ---
