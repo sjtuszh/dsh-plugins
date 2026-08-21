@@ -1,6 +1,6 @@
 {
   "name": "dsh-file-panel",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "main": "lib/host.js",
   "description": "DeepSeek Harness 文件树浏览面板:shell.overlay 浮动文件栏,Typert remote 列目录/打开系统文件管理器(单包,自挂载 remote)。",

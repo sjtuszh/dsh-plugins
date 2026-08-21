@@ -330,7 +330,9 @@ window.__ModuleLoader__.load({
         function renderRows(items, depth) {
           var rows = [];
           for (var i = 0; i < items.length; i++) {
-            var it = items[i];
+            // 必须用 let(var 是函数级作用域,所有 ⋯ 闭包会共享循环后指向最后一个条目的 it,
+            // 导致复制/打开的都是目录最后一个文件——真实踩坑)
+            let it = items[i];
             var isDir = it.kind === 'dir';
             var isOpen = !!expanded[it.path];
             var node = tree[it.path];
