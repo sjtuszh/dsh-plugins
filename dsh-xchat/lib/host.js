@@ -320,14 +320,14 @@ export default {
 
     disposeTool = ctx.tools.register({
       name: 'xchat_query',
-      description: '跨会话知识桥：在目标会话名下原生拉起一个继承其记忆的 fork 子代理，向它询问关键信息并等待回复。每个调用方会话对同一目标会话各分配一个同级专用子代理；可反复追问（ask）；用完必须结束（stop），stop 会打断并归档删除该子代理。用户通常以 @会话名 或 \\会话名 形式引用目标会话，把引用的名称作为 target 传入。',
+      description: '跨会话知识桥：在目标会话名下原生拉起一个继承其记忆的 fork 子代理，向它询问关键信息并等待回复。每个调用方会话对同一目标会话各分配一个同级专用子代理；用完必须结束（stop），stop 会打断并归档删除该子代理。用户通常以 @会话名 或 \\会话名 形式引用目标会话，把引用的名称作为 target 传入。',
       parameters: {
         type: 'object',
         properties: {
-          action: { type: 'string', enum: ['start', 'ask', 'stop'], description: 'start=在目标会话下创建继承其记忆的子代理并首次询问；ask=向本调用方名下的子代理追问；stop=结束并删除本调用方名下的子代理' },
-          target: { type: 'string', description: '目标会话名或子代理名（可带 @ 或 \\ 前缀，如 @财务报告）。start/stop 必填，ask 可用 target 或 childId 定位' },
-          request: { type: 'string', description: '询问内容：需要目标会话提供哪些关键信息。start/ask 必填' },
-          childId: { type: 'string', description: '已建立的子代理会话 id（ask/stop 定位用，可选）' }
+          action: { type: 'string', enum: ['start', 'stop'], description: 'start=在目标会话下创建继承其记忆的子代理并询问；stop=结束并删除本调用方名下的子代理' },
+          target: { type: 'string', description: '目标会话名或子代理名（可带 @ 或 \\ 前缀，如 @财务报告）。start/stop 必填' },
+          request: { type: 'string', description: '询问内容：需要目标会话提供哪些关键信息。start 必填' },
+          childId: { type: 'string', description: '已建立的子代理会话 id（stop 定位用，可选）' }
         },
         required: ['action']
       },
@@ -376,7 +376,7 @@ export default {
             const resolved = await resolveTarget(agent, target, exec.signal)
             if (resolved.error) return { ok: false, note: resolved.error }
             const existing = active.find((v) => v.callerId === callerId && v.targetId === resolved.id)
-            if (existing) return { ok: true, childId: existing.childId, target, reply: '', note: '本会话对该目标已有活跃子代理，请直接 ask 追问' }
+            if (existing) return { ok: true, childId: existing.childId, target, reply: (existing.lastReply || ''), note: '本会话对该目标已有子代理；若需重新询问请先 stop 再 start' }
             // 清理遗留的 xchat 孤儿（含旧版链式留下的中间节点）。
             if (config.autoCleanup) await sweepAllOrphans()
             const g = await getParentAgent(resolved.id, exec.signal)
@@ -426,37 +426,7 @@ export default {
             const reply = wait.reply || (await currentReply(started.childId))
             const entry0 = active.find((v) => v.childId === started.childId)
             if (entry0) entry0.lastReply = reply
-            return { ok: true, childId: started.childId, target, reply, ...(wait.timedOut && !reply ? { note: '子代理已启动但 4 分钟内无文本回复，可 ask 追问' } : {}) }
-          }
-          if (action === 'ask') {
-            const entry = await findEntry()
-            if (!entry) return { ok: false, note: '本会话没有找到活跃子代理，请先用 start 创建' }
-            if (!request) return { ok: false, note: 'ask 需要 request（追问内容）' }
-            // 刷新父 agent：entry.parentAgent 可能是早期 resume 的临时 handle，
-            // 若目标会话已关闭/被平台释放，followup 的 parent 会失效（子代理收不到唤醒）。
-            // 取当前 live 的 agent，没有再 resume 一个，并回写 entry。
-            let parent = ctx.agents.get(entry.targetId)
-            if (!parent) {
-              const g = await getParentAgent(entry.targetId, exec.signal)
-              parent = g.agent
-              entry.parentAgent = parent
-            }
-            // beforeSeq = followup 提交前的 seq 基线：只接受其后的新回复（修复 ask 复读旧文）。
-            const beforeSeq = await currentSeq(entry.childId)
-            await ctx.subagents.followup(parent, entry.childId, [textBlock(request)], { source, signal: exec.signal })
-            const wait = await waitForReply(entry.childId, exec.signal, config.waitTimeoutMs, beforeSeq, entry.lastReply)
-            const prevReply = entry.lastReply
-            const reply = wait.reply || (await currentReply(entry.childId))
-            entry.lastReply = reply
-            // 诊断：总是返回子代理 surface 状态，定位 ask 冷恢复/唤醒问题。
-            let diag = ''
-            try {
-              const snap = await ctx.sessionQuery.readSurface(entry.childId)
-              const evs = snap && Array.isArray(snap.events) ? snap.events : []
-              const last = evs.length ? evs[evs.length - 1] : null
-              diag = ' beforeSeq=' + beforeSeq + ' cap=' + (snap && snap.capturedThroughSeq) + ' last=' + (last ? last.type + '@' + last.seq : 'none') + ' events=' + evs.length + ' stale=' + (reply.length > 0 && prevReply === reply)
-            } catch (e) { diag = ' surface-err' }
-            return { ok: true, childId: entry.childId, target: entry.targetLabel || target, reply, note: 'ask 完成（diag:' + diag + '）' }
+            return { ok: true, childId: started.childId, target, reply, ...(wait.timedOut && !reply ? { note: '子代理已启动但 4 分钟内无文本回复' } : {}) }
           }
           if (action === 'stop') {
             const entry = await findEntry()
