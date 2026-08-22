@@ -380,7 +380,7 @@ export default {
 
     ctx.sessionProjections.register({
       key: 'costSnapshot',
-      schema: { parse: (v) => v },
+      stateSchema: { parse: (v) => v },
       stateVersion: 2,
       init: initState,
       apply(state, event) {
@@ -390,7 +390,9 @@ export default {
         fold(next, entry);
         return next;
       },
-      view(state) {
+      wire: {
+        viewSchema: { parse: (v) => v },
+        view(state) {
         syncGlobal(); // 交付前同步全局(增量,便宜),确保含所有已加载会话的最新事件
         const now = Date.now();
         const ltk = state.lastTurnKey;
@@ -452,7 +454,8 @@ export default {
               })),
             })),
           },
-        };
+          };
+        },
       },
     });
   },
