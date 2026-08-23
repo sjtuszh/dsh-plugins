@@ -15,8 +15,6 @@
 | `dsh-organizer-sidebar` | [`dsh-organizer-sidebar/`](dsh-organizer-sidebar/) | 会话侧边栏组织器:拖拽排序/分组、已归档/已删除双 tab、批量还原删除、回收站删除 |
 | `dsh-cost-panel` | [`dsh-cost-panel/`](dsh-cost-panel/) | DeepSeek 双轨计费面板:会话头部实时计费、历史/定价表/总量统计、余额展示 |
 | `dsh-file-panel` | [`dsh-file-panel/`](dsh-file-panel/) | 文件树浏览面板:浮动按钮 + 文件树、复制路径、打开文件浏览器 |
-| `dsh-sidebar-manager` | [`dsh-sidebar-manager/`](dsh-sidebar-manager/) | 侧栏会话管理器（分组版,Typert remote） |
-| `dsh-sidebar-manager-mount` | [`dsh-sidebar-manager-mount/`](dsh-sidebar-manager-mount/) | 上述插件的 Typert remote 挂载包（双包方案） |
 | `dsh-xchat` | [`dsh-xchat/`](dsh-xchat/) | 跨会话知识桥:@会话名 拉起继承记忆的子代理咨询 |
 | `dsh-lan` | [`dsh-lan/`](dsh-lan/) | 局域网（LAN）相关插件 |
 
@@ -42,8 +40,6 @@ dsh-plugins/
 ├── dsh-organizer-sidebar/         # npm: dsh-organizer-sidebar(单包,UI + Typert 自挂)
 ├── dsh-cost-panel/                # npm: dsh-cost-panel(单包)
 ├── dsh-file-panel/                # npm: dsh-file-panel(单包)
-├── dsh-sidebar-manager/           # npm: dsh-sidebar-manager(双包之一)
-├── dsh-sidebar-manager-mount/     # npm: dsh-sidebar-manager-mount(双包之二,Typert 挂载)
 ├── dsh-xchat/                     # npm: dsh-xchat
 ├── dsh-lan/                       # npm: dsh-lan
 ├── dsh-tray/                      # Windows 系统托盘启动器(独立工具,非插件)
