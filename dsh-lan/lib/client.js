@@ -104,7 +104,7 @@ window.__ModuleLoader__.load({
       React.useEffect(function () {
         if (!opened) return
         load()
-        var t = setInterval(load, 8000)
+        var t = setInterval(load, 2000)
         return function () { clearInterval(t) }
       }, [opened])
 
@@ -125,6 +125,19 @@ window.__ModuleLoader__.load({
       }
       function manualPeers () {
         return (peers || []).filter(function (p) { return p.manual }).map(function (p) { return { name: p.name, ip: p.ip, port: Number(p.port) } })
+      }
+      // Merge a manual peer list into the live `peers` state synchronously:
+      // drop old manual entries, keep discovered ones, re-add the new manual
+      // list, then set state immediately (no wait for the next polling tick).
+      // An async load() still runs after to reconcile with the gateway.
+      function applyManualPeers (manual) {
+        var next = (peers || []).filter(function (p) { return !p.manual })
+        for (var i = 0; i < manual.length; i++) {
+          var m = manual[i]
+          next.push({ name: m.name, ip: m.ip, port: Number(m.port), manual: true })
+        }
+        setPeers(next)
+        return next
       }
       function resetPeerForm () {
         setEditingPeer(null)
@@ -160,6 +173,7 @@ window.__ModuleLoader__.load({
         }
         manual.push({ name: name, ip: ip, port: port })
         gwSave({ manualPeers: manual }).then(function () {
+          applyManualPeers(manual)
           resetPeerForm()
           load()
         }).catch(function (e) { setError(String((e && e.message) || e)) })
@@ -169,6 +183,7 @@ window.__ModuleLoader__.load({
         gwSave({ manualPeers: manual }).then(function () {
           if (target === "http://" + peer.ip + ":" + peer.port) setTarget("local")
           if (editingPeer && editingPeer.ip === peer.ip && editingPeer.port === Number(peer.port)) resetPeerForm()
+          applyManualPeers(manual)
           load()
         }).catch(function (e) { setError(String((e && e.message) || e)) })
       }
