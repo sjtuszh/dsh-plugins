@@ -88,7 +88,11 @@ window.__ModuleLoader__.load({
       var [peers, setPeers] = React.useState([])
       var [target, setTarget] = React.useState("local")
       var [tokenDraft, setTokenDraft] = React.useState("")
-      var [peerDraft, setPeerDraft] = React.useState("")
+      var [managerOpen, setManagerOpen] = React.useState(false)
+      var [editingPeer, setEditingPeer] = React.useState(null)
+      var [peerNameDraft, setPeerNameDraft] = React.useState("")
+      var [peerIpDraft, setPeerIpDraft] = React.useState("")
+      var [peerPortDraft, setPeerPortDraft] = React.useState(String(GW_PORT))
       var [error, setError] = React.useState(null)
 
       function load () {
@@ -111,7 +115,7 @@ window.__ModuleLoader__.load({
       var options = [{ value: "local", label: "本机（当前）" }].concat((peers || []).map(function (p, i) {
         return {
           value: "http://" + p.ip + ":" + p.port,
-          label: (p.name || p.ip) + " (" + p.ip + ":" + p.port + (p.manual ? ", 手动" : "") + ")"
+          label: (p.name || p.ip) + " (" + p.ip + ":" + p.port + ")"
         }
       }))
       var iframeSrc = target && target !== "local" ? target + (tokenOn ? "?token=" + info.token : "") : null
@@ -119,18 +123,54 @@ window.__ModuleLoader__.load({
       function saveToken () {
         gwSave({ token: tokenDraft }).then(function () { setTokenDraft(""); load() }).catch(function (e) { setError(String((e && e.message) || e)) })
       }
-      function addPeer () {
-        var text = (peerDraft || "").trim()
-        var m = /^([0-9a-fA-F.:]+)(?::(\d+))?$/.exec(text)
-        if (!m) { setError("peer 格式应为 ip 或 ip:port"); return }
-        var ip = m[1]; var port = m[2] ? Number(m[2]) : GW_PORT
-        var manual = (peers || []).filter(function (p) { return p.manual }).map(function (p) { return { name: p.name, ip: p.ip, port: p.port } })
-        manual.push({ name: ip, ip: ip, port: port })
-        gwSave({ manualPeers: manual }).then(function () { setPeerDraft(""); load() }).catch(function (e) { setError(String((e && e.message) || e)) })
+      function manualPeers () {
+        return (peers || []).filter(function (p) { return p.manual }).map(function (p) { return { name: p.name, ip: p.ip, port: Number(p.port) } })
       }
-      function removePeer (ip, port) {
-        var manual = (peers || []).filter(function (p) { return p.manual }).map(function (p) { return { name: p.name, ip: p.ip, port: p.port } }).filter(function (p) { return !(p.ip === ip && Number(p.port) === port) })
-        gwSave({ manualPeers: manual }).then(function () { load() }).catch(function (e) { setError(String((e && e.message) || e)) })
+      function resetPeerForm () {
+        setEditingPeer(null)
+        setPeerNameDraft("")
+        setPeerIpDraft("")
+        setPeerPortDraft(String(GW_PORT))
+      }
+      function openAddPeer () {
+        setError(null)
+        resetPeerForm()
+        setManagerOpen(true)
+      }
+      function openEditPeer (peer) {
+        setError(null)
+        setEditingPeer({ ip: peer.ip, port: Number(peer.port) })
+        setPeerNameDraft(peer.name || "")
+        setPeerIpDraft(peer.ip || "")
+        setPeerPortDraft(String(peer.port || GW_PORT))
+      }
+      function savePeer () {
+        var name = (peerNameDraft || "").trim()
+        var ip = (peerIpDraft || "").trim()
+        var port = Number(peerPortDraft)
+        if (!name) { setError("请输入电脑名称"); return }
+        if (!/^[0-9a-fA-F:.]+$/.test(ip)) { setError("请输入有效的 IP 地址"); return }
+        if (!Number.isInteger(port) || port < 1 || port > 65535) { setError("端口必须在 1 到 65535 之间"); return }
+        var manual = manualPeers().filter(function (p) {
+          return !editingPeer || !(p.ip === editingPeer.ip && Number(p.port) === editingPeer.port)
+        })
+        if (manual.some(function (p) { return p.ip === ip && Number(p.port) === port })) {
+          setError("该 IP 和端口的连接已经存在")
+          return
+        }
+        manual.push({ name: name, ip: ip, port: port })
+        gwSave({ manualPeers: manual }).then(function () {
+          resetPeerForm()
+          load()
+        }).catch(function (e) { setError(String((e && e.message) || e)) })
+      }
+      function deletePeer (peer) {
+        var manual = manualPeers().filter(function (p) { return !(p.ip === peer.ip && Number(p.port) === Number(peer.port)) })
+        gwSave({ manualPeers: manual }).then(function () {
+          if (target === "http://" + peer.ip + ":" + peer.port) setTarget("local")
+          if (editingPeer && editingPeer.ip === peer.ip && editingPeer.port === Number(peer.port)) resetPeerForm()
+          load()
+        }).catch(function (e) { setError(String((e && e.message) || e)) })
       }
 
       var rootStyle = {
@@ -148,6 +188,7 @@ window.__ModuleLoader__.load({
           React.createElement("b", { style: { fontSize: 13 } }, "远程 DSH"),
           React.createElement("select", { value: target, onChange: function (e) { setTarget(e.target.value) }, style: Object.assign({}, inputStyle, { cursor: "pointer" }) },
             options.map(function (o, i) { return React.createElement("option", { key: String(i), value: o.value }, o.label) })),
+          React.createElement("button", { style: btnStyle, onClick: openAddPeer }, "连接管理"),
           React.createElement("button", { style: btnStyle, onClick: load }, "刷新"),
           React.createElement("span", { style: { flex: 1 } }),
           React.createElement("span", { style: { fontSize: 11, color: info ? "#9ad1a3" : "#ff9b9b" } }, info ? "网关正常" : "网关未就绪"),
@@ -156,10 +197,7 @@ window.__ModuleLoader__.load({
         React.createElement("div", { style: { display: "flex", gap: 10, padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,.08)", flexWrap: "wrap", alignItems: "center" } },
           React.createElement("label", { style: { fontSize: 11, color: "#aaa" } }, "共享口令（留空=无保护）"),
           React.createElement("input", { style: inputStyle, value: tokenDraft, placeholder: tokenOn ? "已设置" : "未设置", onChange: function (e) { setTokenDraft(e.target.value) } }),
-          React.createElement("button", { style: btnStyle, onClick: saveToken }, "保存口令"),
-          React.createElement("label", { style: { fontSize: 11, color: "#aaa" } }, "手动添加机器 ip:port"),
-          React.createElement("input", { style: inputStyle, value: peerDraft, placeholder: "192.168.1.50:4080", onChange: function (e) { setPeerDraft(e.target.value) } }),
-          React.createElement("button", { style: btnStyle, onClick: addPeer }, "添加")
+          React.createElement("button", { style: btnStyle, onClick: saveToken }, "保存口令")
         ),
         React.createElement("div", { style: { flex: 1, position: "relative" } },
           iframeSrc
@@ -174,7 +212,73 @@ window.__ModuleLoader__.load({
           selfUrl ? React.createElement("a", { href: selfUrl, target: "_blank", rel: "noopener", style: { fontSize: 12, color: "#7aa7ff" } }, "打开本机网关") : null,
           iframeSrc ? React.createElement("a", { href: iframeSrc, target: "_blank", rel: "noopener", style: { fontSize: 12, color: "#7aa7ff" } }, "新标签打开当前") : null
         ),
-        error ? React.createElement("div", { style: { padding: "4px 16px", color: "#ff9b9b", fontSize: 11 } }, String(error)) : null
+        error ? React.createElement("div", { style: { padding: "4px 16px", color: "#ff9b9b", fontSize: 11 } }, String(error)) : null,
+        React.createElement(ConnectionManager, {
+          open: managerOpen,
+          onClose: function () { setManagerOpen(false) },
+          editing: editingPeer,
+          name: peerNameDraft, ip: peerIpDraft, port: peerPortDraft,
+          setName: setPeerNameDraft, setIp: setPeerIpDraft, setPort: setPeerPortDraft,
+          onSave: savePeer,
+          peers: manualPeers(),
+          onEdit: openEditPeer,
+          onNew: resetPeerForm,
+          onDelete: deletePeer
+        })
+      )
+    }
+
+    function ConnectionManager (props) {
+      if (!props.open) return null
+      var editing = props.editing
+      var btnStyle = { background: "rgba(255,255,255,.1)", color: "#eee", border: "1px solid rgba(255,255,255,.2)", borderRadius: 7, padding: "6px 12px", fontSize: 12, cursor: "pointer" }
+      var primaryBtn = Object.assign({}, btnStyle, { background: "rgba(120,160,255,.25)", borderColor: "rgba(120,160,255,.5)" })
+      var inputStyle = { background: "rgba(255,255,255,.08)", color: "#eee", border: "1px solid rgba(255,255,255,.2)", borderRadius: 7, padding: "6px 10px", fontSize: 12, width: "100%", boxSizing: "border-box" }
+      var fieldStyle = { display: "flex", flexDirection: "column", gap: 4 }
+      var labelStyle = { fontSize: 11, color: "#aaa" }
+
+      var rows = (props.peers || []).map(function (p, i) {
+        return React.createElement("div", { key: String(i), style: { display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,.06)" } },
+          React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+            React.createElement("div", { style: { fontSize: 13, color: "#eee", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, p.name),
+            React.createElement("div", { style: { fontSize: 11, color: "#999" } }, p.ip + ":" + p.port)),
+          React.createElement("button", { style: btnStyle, onClick: function () { props.onEdit(p) } }, "编辑"),
+          React.createElement("button", { style: btnStyle, onClick: function () { props.onDelete(p) } }, "删除")
+        )
+      })
+
+      return React.createElement("div", { style: {
+        position: "fixed", inset: 0, zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(0,0,0,.55)", pointerEvents: "auto", fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif"
+      }, onClick: function (e) { if (e.target === e.currentTarget) props.onClose() } },
+        React.createElement("div", { style: {
+          width: 440, maxWidth: "92vw", maxHeight: "84vh", display: "flex", flexDirection: "column",
+          background: "rgba(24,24,28,.98)", color: "#e8e8ea", border: "1px solid rgba(255,255,255,.14)",
+          borderRadius: 12, boxShadow: "0 14px 56px rgba(0,0,0,.6)", overflow: "hidden"
+        } },
+          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,.1)" } },
+            React.createElement("b", { style: { fontSize: 13 } }, editing ? "编辑连接" : "添加连接"),
+            React.createElement("span", { style: { flex: 1 } }),
+            React.createElement("button", { style: btnStyle, onClick: props.onClose }, "关闭")),
+          React.createElement("div", { style: { flex: 1, overflow: "auto", padding: "14px 16px" } },
+            React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
+              React.createElement("div", { style: fieldStyle },
+                React.createElement("label", { style: labelStyle }, "电脑名称"),
+                React.createElement("input", { style: inputStyle, value: props.name, placeholder: "例如：我的电脑", onChange: function (e) { props.setName(e.target.value) } })),
+              React.createElement("div", { style: fieldStyle },
+                React.createElement("label", { style: labelStyle }, "IP 地址"),
+                React.createElement("input", { style: inputStyle, value: props.ip, placeholder: "192.168.1.50", onChange: function (e) { props.setIp(e.target.value) } })),
+              React.createElement("div", { style: fieldStyle },
+                React.createElement("label", { style: labelStyle }, "端口"),
+                React.createElement("input", { style: inputStyle, value: props.port, placeholder: "4080", inputMode: "numeric", onChange: function (e) { props.setPort(e.target.value) } }))),
+            React.createElement("div", { style: { marginTop: 16, borderTop: "1px solid rgba(255,255,255,.08)" } },
+              React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0 4px" } },
+                React.createElement("b", { style: { fontSize: 12, color: "#ddd" } }, "已保存的连接"),
+                React.createElement("button", { style: primaryBtn, onClick: props.onNew }, "新增")),
+              rows.length ? rows : React.createElement("div", { style: { padding: "10px 0", color: "#888", fontSize: 12 } }, "还没有手动连接的机器。"))),
+          React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 8, padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,.1)" } },
+            React.createElement("button", { style: btnStyle, onClick: props.onClose }, "取消"),
+            React.createElement("button", { style: primaryBtn, onClick: props.onSave }, editing ? "保存修改" : "添加")))
       )
     }
 

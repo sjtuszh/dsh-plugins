@@ -41,10 +41,14 @@ browser client roster) to pick it up.
 ## Use
 
 1. Open the DSH GUI on any machine (localhost or via a gateway URL).
-2. Click **远程** at the sidebar foot → a switcher lists discovered machines
-   (same subnet via UDP broadcast) plus any manual entries.
-3. Pick one → the machine's full GUI is embedded; switch back to 本机 anytime.
-   A "新标签打开当前" link opens the remote GUI in its own tab.
+2. Click **远程** at the sidebar foot → the remote switcher opens, listing the
+   local machine plus any discovered/added LAN machines.
+3. Click **连接管理** → a dialog where you can **add**, **edit**, and **delete**
+   manual connections. Each connection stores a computer name, an IP address,
+   and a port (default **4080**). Connections you save here appear in the
+   switcher dropdown.
+4. Pick one from the dropdown → that machine's full GUI is embedded; switch back
+   to 本机 anytime. A "新标签打开当前" link opens the remote GUI in its own tab.
 
 Direct access also works: `http://<lan-ip>:4080/`.
 

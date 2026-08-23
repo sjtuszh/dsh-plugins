@@ -1,6 +1,6 @@
 {
   "name": "dsh-lan",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "LAN gateway + machine switcher for the DeepSeek Harness Web GUI. Each machine exposes its loopback DSH over the LAN through a gateway (HTTP/WebSocket reverse proxy + UDP discovery); a sidebar button opens a switcher that embeds any discovered peer's GUI.",
   "type": "module",
   "main": "lib/index.js",
