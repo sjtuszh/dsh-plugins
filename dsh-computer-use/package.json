@@ -1,0 +1,81 @@
+{
+  "name": "dsh-computer-use",
+  "version": "0.1.0",
+  "description": "Model-agnostic Computer Use capability for DeepSeek Harness: isolated browser first, provider-neutral observation, text planner + third-party vision perception.",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./plugin": {
+      "types": "./lib/plugin.d.ts",
+      "default": "./lib/plugin.js"
+    }
+  },
+  "files": [
+    "lib/**/*",
+    "cordis.patch.yml"
+  ],
+  "scripts": {
+    "build": "npm run build:js && npm run build:native:windows",
+    "build:js": "tsdown",
+    "build:native:windows": "dotnet publish native/windows-helper/DshComputerUseHelper.csproj --configuration Release --runtime win-x64 --self-contained true --output lib/native/win32-x64",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "verify": "npm run typecheck && npm test",
+    "prepublishOnly": "npm run verify && npm run build"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "computer-use",
+    "computer-use-agent",
+    "vision",
+    "playwright",
+    "accessibility"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/schemastery": "*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-attachment": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-session": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-credentials": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-user-approval": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-scope": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-timeout": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-settings": "0.1.0-rc.6",
+    "playwright": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-attachment": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-session": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-credentials": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-user-approval": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-scope": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-timeout": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-settings": "0.1.0-rc.6",
+    "playwright": "*",
+    "tsdown": "*",
+    "tsx": "*",
+    "typescript": "*"
+  }
+}

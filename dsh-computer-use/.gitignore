@@ -1,0 +1,19 @@
+/node_modules/
+/lib/
+/coverage/
+/test-results/
+/native/windows-helper/bin/
+/native/windows-helper/obj/
+
+# Local installed Codex Computer Use snapshot. Never commit or publish.
+/reference-proprietary/
+
+# Exported cookies and screenshots — private data, never commit.
+cookies.json
+*.png
+*.jpg
+*.tsbuildinfo
+
+# Design/study doc with local paths — not part of the published plugin.
+/dsh-computer-use-implementation-plan.md
+

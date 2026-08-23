@@ -1,0 +1,29 @@
+# dsh-computer-use bundle layer.
+#
+# Mounts the Computer Use capability seam (Service Definition) and its
+# model-facing tool + provider plugin (Consumer side). The Service Definition
+# provides `ctx.computerUse`; the plugin injects it, registers a provider
+# (fake by default) and the `computer_observe` / `computer_act` /
+# `computer_stop` tools.
+#
+# The third-party vision route is NOT registered here: it rides the existing
+# `@deepseek-ai/dsh-llm-pi-ai` adapter, which the base bundle already mounts
+# dormant. Configure a vision route in user settings (see README "Vision model"):
+#
+#   llm-pi-ai:
+#     providers:
+#       vision:
+#         apiKeyEnv: VISION_API_KEY
+#         api: openai-completions
+#         baseURL: https://your-vision-endpoint/v1
+#         defaultInput: [text, image]
+#         models:
+#           - id: qwen2.5-vl-72b-instruct
+#             contextWindow: 131072
+- insert:
+    - id: computer-use-service
+      name: dsh-computer-use
+    - id: computer-use
+      name: dsh-computer-use/plugin
+      config:
+        provider: fake
