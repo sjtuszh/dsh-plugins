@@ -1,0 +1,54 @@
+{
+  "name": "dsh-lan",
+  "version": "0.1.0",
+  "description": "LAN gateway + machine switcher for the DeepSeek Harness Web GUI. Each machine exposes its loopback DSH over the LAN through a gateway (HTTP/WebSocket reverse proxy + UDP discovery); a sidebar button opens a switcher that embeds any discovered peer's GUI.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "slots"
+      ]
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "lan",
+    "remote",
+    "switch",
+    "plugin"
+  ],
+  "license": "MIT",
+  "author": "shenzhsjtu",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sjtuszh/dsh-plugins.git",
+    "directory": "dsh-lan"
+  },
+  "homepage": "https://github.com/sjtuszh/dsh-plugins/tree/master/dsh-lan",
+  "bugs": {
+    "url": "https://github.com/sjtuszh/dsh-plugins/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

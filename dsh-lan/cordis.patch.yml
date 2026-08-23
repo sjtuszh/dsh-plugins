@@ -1,0 +1,13 @@
+# dsh-lan bundle patch — mounts the LAN gateway as a profile layer.
+#
+# Declared by package.json's dsh.bundle.patch; `dsh plugin --profile web add ./dsh-lan`
+# installs the package and (because it declares dsh.bundle.patch) appends it to
+# dsh.profile.bundles automatically. The browser half is picked up separately
+# from the same package.json's dsh.client declaration.
+#
+# The gateway port (default 4080) and shared token live in
+# $DSH_HOME/.dsh-lan/config.json (created on first run). Every row below is a
+# host row; restart `dsh web` after installing.
+- insert:
+    - id: dsh-lan
+      name: dsh-lan
