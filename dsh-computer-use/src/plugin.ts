@@ -26,11 +26,16 @@ import { applyPerceiveTool } from './perception.ts'
 import { registerWorkflow } from './workflow/tool.ts'
 import type { WorkflowConfig } from './workflow/engine.ts'
 
-/** The Host builtin for Package-private Client RPC + model-visible dynamic tools. */
-declare const harness: {
+/** Optional Host builtin for Package-private Client RPC + model-visible dynamic tools. */
+type HostHarness = {
   handle(method: string, handler: (args: unknown) => unknown | Promise<unknown>): () => void
   defineTool(definition: unknown): unknown
   registerTool(ctx: Context, tool: unknown): () => void
+}
+
+function runtimeHarness(): HostHarness | undefined {
+  const root = globalThis as typeof globalThis & { harness?: HostHarness }
+  return typeof root.harness === 'object' && root.harness !== null ? root.harness : undefined
 }
 
 /** Cordis plugin name used by loader diagnostics. */
@@ -107,14 +112,12 @@ export interface Config {
   windowsWindowState?: string
 
   // ── Paper Acquisition Workflow ───────────────────────────────────────────
-  /** Download directory the workflow watches for PDFs. */
-  workflowDownloadDir?: string
+  /** Default local project directory for workflow artifacts (screenshots/PDFs/notes). */
+  workflowProjectDir?: string
   /** Execution backend for read-heavy steps (`playwright` | `windows`). */
   workflowReadProvider?: string
   /** Execution backend for gated / strict-review steps. */
   workflowActionProvider?: string
-  /** Directory where workflow screenshots are materialized before vision. */
-  workflowScreenshotDir?: string
 }
 
 export const Config: z<Config> = z.object({
@@ -147,10 +150,9 @@ export const Config: z<Config> = z.object({
 
   windowsWindowState: z.string().default('normal'),
 
-  workflowDownloadDir: z.string().default(''),
+  workflowProjectDir: z.string().default(''),
   workflowReadProvider: z.string().default(''),
   workflowActionProvider: z.string().default(''),
-  workflowScreenshotDir: z.string().default(''),
 })
 
 /**
@@ -234,17 +236,12 @@ export function apply(ctx: Context, config: Config): void {
     applyApprovalGate(ctx, { confirmActions: c.confirmActions })
 
     const workflowConfig: WorkflowConfig = {
-      vision: {
-        provider: c.visionProvider,
-        model: c.visionModel,
-        maxTokens: c.visionMaxTokens,
-        screenshotDir: c.workflowScreenshotDir.length > 0 ? c.workflowScreenshotDir : undefined,
-      },
-      downloadDir: c.workflowDownloadDir.length > 0 ? c.workflowDownloadDir : undefined,
+      projectDir: c.workflowProjectDir.length > 0 ? c.workflowProjectDir : undefined,
       readProvider: (c.workflowReadProvider === 'windows' ? 'windows' : 'playwright') as 'playwright' | 'windows',
       actionProvider: (c.workflowActionProvider === 'playwright' ? 'playwright' : 'windows') as 'playwright' | 'windows',
     }
-    // `harness` is the Host builtin for Package-private Client RPC + dynamic tools.
-    registerWorkflow(ctx, harness, workflowConfig)
+    // Use the internal Host builtin when present; otherwise register the
+    // workflow tools only and skip the optional RPC bridge.
+    registerWorkflow(ctx, runtimeHarness(), workflowConfig)
   }
 }

@@ -1,0 +1,70 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.heading {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.desc {
+  color: #888;
+  font-size: 12px;
+  margin: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+.input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #33333a;
+  border-radius: 6px;
+  background: #1b1b1f;
+  color: #e8e8ea;
+  font-size: 12px;
+}
+
+.btn {
+  padding: 6px 12px;
+  border: 1px solid #3a3a42;
+  border-radius: 6px;
+  background: #2a2a32;
+  color: #e8e8ea;
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn:hover {
+  background: #33333c;
+}
+
+.hint {
+  color: #888;
+  font-size: 11px;
+}
+.hint code {
+  color: #9ecbff;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+}

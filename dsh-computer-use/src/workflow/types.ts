@@ -58,8 +58,28 @@ export interface PaperObservationSnapshot {
   observationId: string
   url?: string
   title: string
-  /** Interactive element names (and ids) the engine may click. */
-  elements: readonly { elementId: string; name?: string; role: string }[]
+  /** Interactive element names (and ids) the engine may click, with coordinate hints. */
+  elements: readonly PaperElementHint[]
+  /** Document text (the DOM/accessibility text channel; no image needed). */
+  documentText?: string
+}
+
+/** One interactive element on the page, with its clickable coordinate hint. */
+export interface PaperElementHint {
+  elementId: string
+  name?: string
+  role: string
+  /** Element bounds in page CSS pixels (click coordinate source). */
+  bounds: { x: number; y: number; width: number; height: number }
+}
+
+/** Project-dir layout paths (resolved). */
+export interface ProjectLayout {
+  root: string
+  screenshots: string
+  pdfs: string
+  notes: string
+  state: string
 }
 
 /** One workflow run's world: the paper, the browser session, and its state. */
@@ -73,6 +93,10 @@ export interface PaperRun {
   state: WorkflowState
   /** Which execution backend the current step uses. */
   provider: ProviderChoice
+  /** The local project directory holding this run's artifacts. */
+  projectDir: string
+  /** The project's sub-directory layout, resolved at start. */
+  layout?: ProjectLayout
   /** Live browser computer-use session id, once opened. */
   sessionId?: string
   /** Current target inside that session. */
@@ -81,6 +105,8 @@ export interface PaperRun {
   pageType?: PageType
   /** Last observation url/title. */
   url?: string
+  /** Materialized screenshot path (the model reads it with read_image). */
+  screenshotPath?: string
   /** Human-gate record, set while waiting for the user. */
   gate?: HumanGateRecord
   /** Downloaded file path after DOWNLOAD. */
@@ -89,8 +115,6 @@ export interface PaperRun {
   pdfVerified?: PdfVerification
   /** Any terminal error. */
   error?: string
-  /** Why classification failed, if it did (e.g. no vision route). */
-  classifyError?: string
   /** Last observation, as a lean owned snapshot (never the live object). */
   observation?: PaperObservationSnapshot
   /** Seen pages, to short-circuit repeated obstacles. */
@@ -145,6 +169,7 @@ export interface WorkflowStepStatus {
   pageType?: PageType
   gate?: HumanGateRecord
   url?: string
+  screenshotPath?: string
   pdfVerified?: PdfVerification
   error?: string
 }

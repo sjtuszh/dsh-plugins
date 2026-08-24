@@ -13,17 +13,24 @@
     "./plugin": {
       "types": "./lib/plugin.d.ts",
       "default": "./lib/plugin.js"
-    }
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "files": [
     "lib/**/*",
     "cordis.patch.yml"
   ],
   "scripts": {
-    "build": "npm run build:js && npm run build:native:windows",
+    "build": "npm run build:js && npm run build:client && npm run build:native:windows",
     "build:js": "tsdown",
+    "build:client": "tsc -p tsconfig.client.json && tsdown -c tsdown.client.config.ts",
     "build:native:windows": "dotnet publish native/windows-helper/DshComputerUseHelper.csproj --configuration Release --runtime win-x64 --self-contained true --output lib/native/win32-x64",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "tsx --test test/*.test.ts",
     "verify": "npm run typecheck && npm test",
     "prepublishOnly": "npm run verify && npm run build"
@@ -31,7 +38,23 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ],
+      "platform": "web"
     }
+  },
+  "dshClient": {
+    "inject": [
+      "@deepseek-ai/dsh-client-runtime",
+      "@deepseek-ai/dsh-client-locale",
+      "@deepseek-ai/dsh-client-ui-conversation"
+    ],
+    "platform": "web"
   },
   "keywords": [
     "deepseek-harness",
@@ -58,10 +81,18 @@
     "@deepseek-ai/dsh-scope": "0.1.0-rc.6",
     "@deepseek-ai/dsh-timeout": "0.1.0-rc.6",
     "@deepseek-ai/dsh-settings": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-locale": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.6",
+    "react": "^18.2.0",
     "playwright": "*"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
     "@deepseek-ai/cordis": "4.0.1",
     "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
     "@deepseek-ai/dsh-attachment": "0.1.0-rc.6",
@@ -73,6 +104,14 @@
     "@deepseek-ai/dsh-scope": "0.1.0-rc.6",
     "@deepseek-ai/dsh-timeout": "0.1.0-rc.6",
     "@deepseek-ai/dsh-settings": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-locale": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.6",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "lightningcss": "^1.33.0",
     "playwright": "*",
     "tsdown": "*",
     "tsx": "*",
