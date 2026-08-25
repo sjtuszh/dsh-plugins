@@ -22,6 +22,7 @@ const organizerLoadResult$schema = z.union([
     ok: z.literal(true),
     groups: z.array(z.any()),
     order: z.record(z.string(), z.any()).optional(),
+    hiddenWorkspaces: z.array(z.string()).optional(),
   }),
   z.object({
     ok: z.literal(false),
@@ -39,6 +40,7 @@ const organizerSaveRequest$schema = z.object({
       expanded: z.boolean().optional(),
     })),
     order: z.record(z.string(), z.array(z.string())).optional(),
+    hiddenWorkspaces: z.array(z.string()).optional(),
   }),
 });
 
@@ -372,7 +374,7 @@ export const TYPERT = {
           },
           {
             name: 'OrganizerState',
-            declaration: 'export interface OrganizerState {\n    readonly groups: readonly OrganizerGroup[];\n    readonly order?: Record<string, readonly string[]>;\n}',
+            declaration: 'export interface OrganizerState {\n    readonly groups: readonly OrganizerGroup[];\n    readonly order?: Record<string, readonly string[]>;\n    readonly hiddenWorkspaces?: readonly string[];\n}',
           },
           {
             name: 'OrganizerLoadRequest',

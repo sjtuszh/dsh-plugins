@@ -81,7 +81,12 @@ class SessionOrganizerService extends TypertRemoteService {
       if (!state || typeof state !== 'object' || !Array.isArray(state.groups)) {
         return { ok: true, groups: [], order: {} };
       }
-      return { ok: true, groups: state.groups, order: state.order || {} };
+      return {
+        ok: true,
+        groups: state.groups,
+        order: state.order || {},
+        hiddenWorkspaces: Array.isArray(state.hiddenWorkspaces) ? state.hiddenWorkspaces : [],
+      };
     } catch (e) {
       // file absent on first run — treat as empty state, not an error
       return { ok: true, groups: [], order: {} };
