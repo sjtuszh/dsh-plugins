@@ -8,7 +8,7 @@
 |---|---|
 | `DshTray.cs` | C# 源码（兼容 C# 5 / .NET Framework 4.x，不用新语法） |
 | `build-tray.ps1` | 构建脚本：渲染鲸鱼 ICO（从 dsh favicon.svg 解析 M/C/Z 路径）→ csc 编译（`/win32icon` 嵌入图标）→ 写配置 → 桌面快捷方式。**ASCII-only 注释**（PS 5.1 无 BOM 解析中文会坏） |
-| `whale.ico` | 鲸鱼托盘图标（32×32，品牌蓝 #4D6BFE，构建时生成） |
+| `whale.ico` | 鲸鱼托盘图标（16/24/32/48/64/128/256 多尺寸 32 位 ARGB，品牌蓝 #4D6BFE，构建时生成） |
 | `DshTray.exe` | 产物（WinExe，已嵌入鲸鱼图标） |
 | `dsh-tray.json` | 启动配置：`node`（node.exe 路径）、`args`（`bin.js --profile web --host 127.0.0.1 --port 3080`）、`url` |
 | `dsh-tray.log` | 运行时日志（dsh 子进程 stdout/stderr 追加） |

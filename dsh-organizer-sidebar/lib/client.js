@@ -77,6 +77,9 @@ window.__ModuleLoader__.load({
 .sorg-rtBtn:hover{background:var(--dsw-alias-bg-layer-2)}
 .sorg-rtBtn:disabled{opacity:.5;cursor:default}
 .sorg-cb{flex:none;width:15px;height:15px;margin:0 4px 0 2px;accent-color:var(--dsw-alias-state-business-primary);cursor:pointer}
+.sorg-hiddenToggle{flex:none;display:flex;justify-content:center;padding:2px 0 0;width:100%}
+.sorg-toggleBtn{flex:none;height:24px;border:none;border-radius:7px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);cursor:pointer;font-size:11px;font:inherit;padding:0 10px;margin:2px auto;white-space:nowrap}
+.sorg-toggleBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .sorg-batch{flex:none;display:flex;gap:6px;align-items:center;padding:0 8px 6px;flex-wrap:wrap}
 .sorg-batchInfo{font-size:11px;color:var(--dsw-alias-label-secondary);margin-right:auto}
 .sorg-selRow{background:var(--dsw-alias-interactive-bg-hover)}
@@ -271,8 +274,8 @@ window.__ModuleLoader__.load({
       }
       function groupSize(count) { return Math.min(20, 8 + Math.min(count, 8) * 1.5); }
 
-      // ---- persisted view state (groups nested under a workspace + per-account order) ----
-      var persisted = { groups: [], order: {} };
+      // ---- persisted view state (groups nested under a workspace + per-account order + hidden workspaces) ----
+      var persisted = { groups: [], order: {}, hiddenWorkspaces: [] };
       function loadState() {
         return whenRemoteReady().then(function () {
           var p = null;
@@ -286,6 +289,7 @@ window.__ModuleLoader__.load({
                 persisted = {
                   groups: res.groups.filter(function (g) { return g && typeof g.workspaceId === 'string'; }),
                   order: res.order || {},
+                  hiddenWorkspaces: Array.isArray(res.hiddenWorkspaces) ? res.hiddenWorkspaces : [],
                 };
               }
             }, function () { /* first run: no state yet */ });
@@ -345,6 +349,11 @@ window.__ModuleLoader__.load({
         var groups = groupsState[0], setGroups = groupsState[1];
         var orderState = react.useState(persisted.order);
         var order = orderState[0], setOrder = orderState[1];
+        // 隐藏的工作区(workspaceId 数组) + 是否展开显示隐藏工作区
+        var hiddenWsState = react.useState(persisted.hiddenWorkspaces || []);
+        var hiddenWs = hiddenWsState[0], setHiddenWs = hiddenWsState[1];
+        var showHiddenState = react.useState(false);
+        var showHidden = showHiddenState[0], setShowHidden = showHiddenState[1];
         var menuState = react.useState(null); // { kind, x, y, id }
         var menu = menuState[0], setMenu = menuState[1];
         var modalState = react.useState(null); // { kind, payload }
@@ -373,6 +382,7 @@ window.__ModuleLoader__.load({
           loadState().then(function () {
             setGroups(persisted.groups || []);
             setOrder(persisted.order || {});
+            setHiddenWs(persisted.hiddenWorkspaces || []);
           });
         }, []);
 
@@ -405,10 +415,12 @@ window.__ModuleLoader__.load({
           return function () { document.removeEventListener('click', onDocClick); };
         }, [menu]);
 
-        function persist(nextGroups, nextOrder) {
+        function persist(nextGroups, nextOrder, nextHiddenWs) {
           setGroups(nextGroups);
           setOrder(nextOrder);
-          saveState({ groups: nextGroups, order: nextOrder });
+          var nh = nextHiddenWs !== undefined ? nextHiddenWs : hiddenWs;
+          setHiddenWs(nh);
+          saveState({ groups: nextGroups, order: nextOrder, hiddenWorkspaces: nh });
         }
 
         var current = list && list.current;
@@ -739,6 +751,48 @@ window.__ModuleLoader__.load({
         function archiveSession(id) {
           if (workspacesService) workspacesService.archiveSession(id).then(function () {}, function (e) { console.error('archive failed', e); });
         }
+        // 隐藏工作区:仅加入 hiddenWorkspaces 持久化,不动会话/分组结构。
+        function hideWorkspace(wsId) {
+          var nh = hiddenWs.slice();
+          if (nh.indexOf(wsId) === -1) nh.push(wsId);
+          persist(groups, order, nh);
+        }
+        // 取消隐藏工作区:从 hiddenWorkspaces 移除。
+        function unhideWorkspace(wsId) {
+          persist(groups, order, hiddenWs.filter(function (x) { return x !== wsId; }));
+        }
+        // 移除工作区:确认弹窗 → 归档该工作区下所有会话 → 删除工作区(会话归档后不出现在
+        // 分组 surface),清理该工作区下的用户分组与顺序持久化,避免孤儿分组残留。
+        function removeWorkspace(wsId, wsTitle) {
+          setModal({ kind: 'workspace-remove', id: wsId, title: wsTitle });
+        }
+        function confirmRemoveWorkspace() {
+          var wsId = modal.id;
+          var wsTitle = modal.title || '';
+          setModal(null);
+          var ws = workspaces.find(function (w) { return w.workspaceId === wsId; });
+          var sids = ws ? ws.sessionIds.slice() : [];
+          // 归档所有下属会话(并发,fail-safe),然后再删除工作区
+          sids.forEach(function (sid) {
+            if (workspacesService) {
+              workspacesService.archiveSession(sid).then(function () {}, function (e) { console.error('archive session failed', e); });
+            }
+          });
+          function finishRemove() {
+            if (!workspacesService) return;
+            workspacesService.delete(wsId).then(function () {
+              var nextGroups = groups.filter(function (g) { return g.workspaceId !== wsId; });
+              var nextOrder = Object.assign({}, order);
+              delete nextOrder['w:' + wsId];
+              nextGroups.forEach(function (g) { delete nextOrder['g:' + g.id]; });
+              persist(nextGroups, nextOrder, hiddenWs.filter(function (x) { return x !== wsId; }));
+            }, function (e) {
+              console.error('remove workspace failed', e);
+              window.alert('移除工作区失败：' + ((e && (e.message || e.code)) || '请求出错'));
+            });
+          }
+          if (workspacesService) Promise.resolve().then(finishRemove);
+        }
         // 删除会话:确认后调用 Host(回收站删除),成功后把会话从本地分组/顺序中移除。
         // 列表本身会随 Host 对账消失;这里同步清理分组数据避免残留引用。
         function deleteSession(id) {
@@ -899,6 +953,21 @@ window.__ModuleLoader__.load({
             ],
           });
         }
+        function workspaceMenu(e, ws) {
+          var isHidden = hiddenWs.indexOf(ws.workspaceId) !== -1;
+          openMenuAt(e, {
+            kind: 'workspace', id: ws.workspaceId, title: ws.title, isHidden: isHidden,
+            items: isHidden
+              ? [
+                  { id: 'unhide', label: '取消隐藏' },
+                  { id: 'remove', label: '移除工作区', danger: true },
+                ]
+              : [
+                  { id: 'hide', label: '隐藏工作区' },
+                  { id: 'remove', label: '移除工作区', danger: true },
+                ],
+          });
+        }
         function onMenuPick(id) {
           var m = menu;
           if (!m) return;
@@ -908,6 +977,10 @@ window.__ModuleLoader__.load({
           } else if (m.kind === 'archived') {
             if (id === 'restore') restoreArchived(m.id);
             if (id === 'delete') deleteArchivedOne(m.id);
+          } else if (m.kind === 'workspace') {
+            if (id === 'hide') hideWorkspace(m.id);
+            if (id === 'unhide') unhideWorkspace(m.id);
+            if (id === 'remove') removeWorkspace(m.id, m.title);
           } else {
             if (id === 'rename') renameSession(m.id);
             if (id === 'fork') forkSession(m.id);
@@ -943,13 +1016,18 @@ window.__ModuleLoader__.load({
         }
 
         // ---- render helpers ----
+        // 子 agent 行:自身运行中(running)显示绿点,等待用户(pendingInteraction)显示黄点
         function childRow(cid) {
+          var csummary = byId[cid];
+          var cwaiting = csummary !== undefined && csummary.pendingInteraction !== undefined && csummary.pendingInteraction !== null;
+          var cstatusDot = cwaiting ? 'sorg-dot-wait' : (csummary && csummary.running ? 'sorg-dot-run' : null);
           return react.createElement('div', {
             key: cid,
             className: 'sorg-row sorg-title-sm sorg-child',
             onClick: function () { openSession(cid); },
             children: [
               react.createElement('span', { className: 'sorg-ico' }, isAgentTeamsChild(cid) ? WORKER_ICON : SUBAGENT_ICON),
+              cstatusDot !== null && react.createElement('span', { key: 'st', className: cstatusDot }),
               react.createElement('span', { className: 'sorg-name' }, childName(cid)),
               react.createElement('span', { className: 'sorg-time' }, timeOf(cid)),
             ],
@@ -960,8 +1038,17 @@ window.__ModuleLoader__.load({
           var marker = drag && drag.over && drag.over.id === id ? drag.over.half : null;
           var summary = byId[id];
           var waiting = summary !== undefined && summary.pendingInteraction !== undefined && summary.pendingInteraction !== null;
-          var statusDot = waiting ? 'sorg-dot-wait' : (summary && summary.running ? 'sorg-dot-run' : null);
           var children = childrenOf[id] || [];
+          // 自身运行中 → 绿点;等待用户 → 黄点;否则若有任一子 agent 在活动(运行或等待)→ 绿点
+          var hasActiveChild = children.some(function (c) {
+            var cs = byId[c];
+            if (cs === undefined) return false;
+            if (cs.running) return true;
+            return cs.pendingInteraction !== undefined && cs.pendingInteraction !== null;
+          });
+          var statusDot = waiting ? 'sorg-dot-wait'
+            : (summary && summary.running ? 'sorg-dot-run'
+            : (hasActiveChild ? 'sorg-dot-run' : null));
           var childKey = 's:' + id;
           var childOpen = expanded[childKey] === true;
           var rowEl = react.createElement('div', {
@@ -1031,15 +1118,17 @@ window.__ModuleLoader__.load({
 
         function workspaceNode(ws) {
           var key = 'w:' + ws.workspaceId;
+          var isHidden = hiddenWs.indexOf(ws.workspaceId) !== -1;
           var wsGroups = groups.filter(function (g) { return g.workspaceId === ws.workspaceId; });
           var looseSessions = orderedIn(key, ws.sessionIds.filter(function (id) { return visible(id) && !groupedMembers.has(id); }));
           var expandedNow = isExpanded(key);
           return react.createElement('div', { key: key, className: 'sorg-grp' },
-            react.createElement('div', { className: 'sorg-row', onClick: function () { toggleExpanded(key); } },
+            react.createElement('div', { className: 'sorg-row' + (isHidden ? ' sorg-ghost' : ''), onClick: function () { toggleExpanded(key); } },
               react.createElement('span', { className: 'sorg-caret' }, expandedNow ? '\u25BE' : '\u25B8'),
               react.createElement('span', { className: 'sorg-ico' }, WORKSPACE_ICON),
               react.createElement('span', { className: 'sorg-name' }, ws.title),
               react.createElement('span', { className: 'sorg-time' }, String(ws.sessionIds.filter(visible).length)),
+              react.createElement('button', { type: 'button', className: 'sorg-dots', onClick: function (e) { workspaceMenu(e, ws); } }, '\u22EF'),
             ),
             expandedNow && react.createElement('div', { className: 'sorg-sub' },
               wsGroups.map(userGroupNode),
@@ -1178,15 +1267,19 @@ window.__ModuleLoader__.load({
         var modalTitle = modal && (modal.kind === 'group-rename' ? '重命名分组'
           : modal.kind === 'group-delete' ? '删除分组'
           : modal.kind === 'session-delete' ? '删除会话'
+          : modal.kind === 'workspace-remove' ? '移除工作区'
           : '重命名会话');
-        var modalConfirmText = modal && (modal.kind === 'group-delete' || modal.kind === 'session-delete') ? '删除' : '确定';
-        var modalConfirmDisabled = modal !== null && modal.kind !== 'group-delete' && modal.kind !== 'session-delete' && draft.trim() === '';
+        var modalConfirmText = modal && (modal.kind === 'group-delete' || modal.kind === 'session-delete' || modal.kind === 'workspace-remove') ? '移除' : '确定';
+        var modalConfirmDisabled = modal !== null && modal.kind !== 'group-delete' && modal.kind !== 'session-delete' && modal.kind !== 'workspace-remove' && draft.trim() === '';
         var modalChildren = null;
         if (modal !== null && modal.kind === 'group-delete') {
           modalChildren = react.createElement('div', null, '删除分组"' + (modal.name || '') + '"？其中的会话会回到工作区里。');
         } else if (modal !== null && modal.kind === 'session-delete') {
           modalChildren = react.createElement('div', null,
             '删除会话"' + (modal.title || '') + '"？会话记录会移入系统回收站，可从回收站还原。');
+        } else if (modal !== null && modal.kind === 'workspace-remove') {
+          modalChildren = react.createElement('div', null,
+            '移除工作区"' + (modal.title || '') + '"？其下所有会话会被归档到「已归档」，工作区本身被删除。此操作不可撤销。');
         } else {
           modalChildren = react.createElement('input', {
             className: 'sorg-input',
@@ -1222,18 +1315,32 @@ window.__ModuleLoader__.load({
           ),
           react.createElement('div', { className: 'sorg-list' },
             tab === 'main' && react.createElement(react.Fragment, null,
-              (workspaces.length === 0 && ungroupedSessions.length === 0 && groups.length === 0)
-                && react.createElement('div', { className: 'sorg-empty' }, '暂无会话'),
-              workspaces.map(workspaceNode),
-              ungroupedSessions.length > 0 && react.createElement('div', { key: ungroupedKey, className: 'sorg-grp' },
-                react.createElement('div', { className: 'sorg-row', onClick: function () { toggleExpanded(ungroupedKey); } },
-                  react.createElement('span', { className: 'sorg-caret' }, isExpanded(ungroupedKey) ? '\u25BE' : '\u25B8'),
-                  react.createElement('span', { className: 'sorg-ico' }, WORKSPACE_ICON),
-                  react.createElement('span', { className: 'sorg-name' }, '未分组'),
-                  react.createElement('span', { className: 'sorg-time' }, String(ungroupedSessions.length)),
-                ),
-                isExpanded(ungroupedKey) && react.createElement('div', { className: 'sorg-sub' }, ungroupedSessions.map(function (id) { return row(ungroupedKey, id); })),
-              ),
+              (function () {
+                var visibleWs = workspaces.filter(function (w) { return hiddenWs.indexOf(w.workspaceId) === -1; });
+                var hiddenItems = workspaces.filter(function (w) { return hiddenWs.indexOf(w.workspaceId) !== -1; });
+                return react.createElement(react.Fragment, null,
+                  (visibleWs.length === 0 && ungroupedSessions.length === 0 && groups.length === 0)
+                    && react.createElement('div', { className: 'sorg-empty' }, '暂无会话'),
+                  visibleWs.map(workspaceNode),
+                  ungroupedSessions.length > 0 && react.createElement('div', { key: ungroupedKey, className: 'sorg-grp' },
+                    react.createElement('div', { className: 'sorg-row', onClick: function () { toggleExpanded(ungroupedKey); } },
+                      react.createElement('span', { className: 'sorg-caret' }, isExpanded(ungroupedKey) ? '\u25BE' : '\u25B8'),
+                      react.createElement('span', { className: 'sorg-ico' }, WORKSPACE_ICON),
+                      react.createElement('span', { className: 'sorg-name' }, '未分组'),
+                      react.createElement('span', { className: 'sorg-time' }, String(ungroupedSessions.length)),
+                    ),
+                    isExpanded(ungroupedKey) && react.createElement('div', { className: 'sorg-sub' }, ungroupedSessions.map(function (id) { return row(ungroupedKey, id); })),
+                  ),
+                  hiddenItems.length > 0 && react.createElement('div', { className: 'sorg-hiddenToggle' },
+                    react.createElement('button', {
+                      type: 'button',
+                      className: 'sorg-toggleBtn',
+                      onClick: function () { setShowHidden(!showHidden); },
+                    }, showHidden ? '隐藏工作区' + '\u25BE' : '隐藏工作区 (' + hiddenItems.length + ')' + '\u25B8'),
+                  ),
+                  showHidden && hiddenItems.map(workspaceNode),
+                );
+              })(),
             ),
             tab === 'archived' && react.createElement(archivedList, null),
             tab === 'deleted' && react.createElement(deletedList, null),
@@ -1247,7 +1354,9 @@ window.__ModuleLoader__.load({
                 type: 'button',
                 className: 'sorg-btn sorg-primary',
                 disabled: modalConfirmDisabled,
-                onClick: modal.kind === 'session-delete' ? confirmDeleteSession : confirmRename,
+                onClick: modal.kind === 'session-delete' ? confirmDeleteSession
+                  : modal.kind === 'workspace-remove' ? confirmRemoveWorkspace
+                  : confirmRename,
               }, modalConfirmText),
             },
             children: modalChildren,
