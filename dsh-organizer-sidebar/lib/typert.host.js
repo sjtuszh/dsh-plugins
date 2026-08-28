@@ -126,6 +126,41 @@ const organizerRestoreResult$schema = z.union([
   }),
 ]);
 
+// 拉起子智能体:父会话 id + 子代理名称 + 模式(new=全新 / inherit=继承父上下文) + 可选任务。
+const organizerSpawnSubagentRequest$schema = z.object({
+  parentSessionId: z.string(),
+  name: z.string(),
+  mode: z.string().optional(),
+  task: z.string().optional(),
+});
+
+const organizerSpawnSubagentResult$schema = z.union([
+  z.object({
+    ok: z.literal(true),
+    childId: z.string(),
+  }),
+  z.object({
+    ok: z.literal(false),
+    error: z.string(),
+  }),
+]);
+
+// 结束子智能体:子代理 id + 其父会话 id。
+const organizerEndSubagentRequest$schema = z.object({
+  childSessionId: z.string(),
+  parentSessionId: z.string(),
+});
+
+const organizerEndSubagentResult$schema = z.union([
+  z.object({
+    ok: z.literal(true),
+  }),
+  z.object({
+    ok: z.literal(false),
+    error: z.string(),
+  }),
+]);
+
 export const TYPERT = {
   package: 'dsh-organizer-sidebar',
   face: 'host',
@@ -306,6 +341,56 @@ export const TYPERT = {
       },
       sourceLocation: { file: 'dsh-organizer-sidebar/lib/host.js', line: 1, column: 1 },
     },
+    {
+      id: 'dsh-organizer-sidebar#organizer/spawnSubagent',
+      service: 'organizer',
+      namespace: 'organizer',
+      method: 'spawnSubagent',
+      invocation: { kind: 'direct' },
+      parameters: [
+        {
+          name: 'request',
+          wire: 'request',
+          source: 'json',
+          codec: {
+            mode: 'strict',
+            typeSymbol: 'dsh-organizer-sidebar/types#OrganizerSpawnSubagentRequest',
+            schema: organizerSpawnSubagentRequest$schema,
+          },
+        },
+      ],
+      result: {
+        mode: 'strict',
+        typeSymbol: 'dsh-organizer-sidebar/types#OrganizerSpawnSubagentResult',
+        schema: organizerSpawnSubagentResult$schema,
+      },
+      sourceLocation: { file: 'dsh-organizer-sidebar/lib/host.js', line: 1, column: 1 },
+    },
+    {
+      id: 'dsh-organizer-sidebar#organizer/endSubagent',
+      service: 'organizer',
+      namespace: 'organizer',
+      method: 'endSubagent',
+      invocation: { kind: 'direct' },
+      parameters: [
+        {
+          name: 'request',
+          wire: 'request',
+          source: 'json',
+          codec: {
+            mode: 'strict',
+            typeSymbol: 'dsh-organizer-sidebar/types#OrganizerEndSubagentRequest',
+            schema: organizerEndSubagentRequest$schema,
+          },
+        },
+      ],
+      result: {
+        mode: 'strict',
+        typeSymbol: 'dsh-organizer-sidebar/types#OrganizerEndSubagentResult',
+        schema: organizerEndSubagentResult$schema,
+      },
+      sourceLocation: { file: 'dsh-organizer-sidebar/lib/host.js', line: 1, column: 1 },
+    },
   ],
   model: {
     services: [
@@ -365,6 +450,20 @@ export const TYPERT = {
             signature: 'async restoreDeleted(request: OrganizerRestoreRequest): Promise<OrganizerRestoreResult>',
             summary: '从回收站还原已删除会话。',
             jsDoc: '/**\n * 从回收站还原已删除会话。\n * @param request - 目标 sessionId。\n * @returns 成功或错误信息。\n */',
+          },
+          {
+            kind: 'method',
+            name: 'spawnSubagent',
+            signature: 'async spawnSubagent(request: OrganizerSpawnSubagentRequest): Promise<OrganizerSpawnSubagentResult>',
+            summary: '拉起子智能体:以父会话启动一个 continuable 子代理(名称=label)。',
+            jsDoc: '/**\n * 拉起子智能体。\n * @param request - 父会话 id 与子代理名称。\n * @returns 子代理 childId 或错误信息。\n */',
+          },
+          {
+            kind: 'method',
+            name: 'endSubagent',
+            signature: 'async endSubagent(request: OrganizerEndSubagentRequest): Promise<OrganizerEndSubagentResult>',
+            summary: '结束子智能体:对目标子代理发出 interrupt。',
+            jsDoc: '/**\n * 结束子智能体。\n * @param request - 子代理 id 与其父会话 id。\n * @returns 成功或错误信息。\n */',
           },
         ],
         types: [
@@ -427,6 +526,22 @@ export const TYPERT = {
           {
             name: 'OrganizerRestoreResult',
             declaration: 'export type OrganizerRestoreResult = { ok: true; already?: boolean } | { ok: false; error: string };',
+          },
+          {
+            name: 'OrganizerSpawnSubagentRequest',
+            declaration: 'export interface OrganizerSpawnSubagentRequest {\n    readonly parentSessionId: string;\n    readonly name: string;\n    readonly mode?: "new" | "inherit";\n    readonly task?: string;\n}',
+          },
+          {
+            name: 'OrganizerSpawnSubagentResult',
+            declaration: 'export type OrganizerSpawnSubagentResult = { ok: true; childId: string } | { ok: false; error: string };',
+          },
+          {
+            name: 'OrganizerEndSubagentRequest',
+            declaration: 'export interface OrganizerEndSubagentRequest {\n    readonly childSessionId: string;\n    readonly parentSessionId: string;\n}',
+          },
+          {
+            name: 'OrganizerEndSubagentResult',
+            declaration: 'export type OrganizerEndSubagentResult = { ok: true } | { ok: false; error: string };',
           },
         ],
       },

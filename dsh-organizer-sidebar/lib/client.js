@@ -62,10 +62,17 @@ window.__ModuleLoader__.load({
 .sorg-modal-title{font-size:14px;font-weight:600}
 .sorg-input{box-sizing:border-box;width:100%;height:32px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-module);color:var(--dsw-alias-label-primary);padding:0 10px;font:inherit}
 .sorg-input:focus{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-1px}
+.sorg-taskArea{height:auto;min-height:76px;resize:vertical;padding:8px 10px;line-height:18px}
 .sorg-modal-actions{display:flex;justify-content:flex-end;gap:8px}
 .sorg-btn{height:30px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-module);color:var(--dsw-alias-label-primary);cursor:pointer;padding:0 14px;font:inherit;font-size:12px}
 .sorg-btn:hover{background:var(--dsw-alias-bg-layer-2)}
 .sorg-btn.sorg-primary{background:var(--dsw-alias-state-business-primary);border-color:transparent;color:#fff}
+.sorg-spawnBody{display:flex;flex-direction:column;gap:8px}
+.sorg-modeToggle{display:flex;gap:6px}
+.sorg-modeBtn{flex:1;height:30px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-module);color:var(--dsw-alias-label-secondary);cursor:pointer;font:inherit;font-size:12px}
+.sorg-modeBtn:hover{background:var(--dsw-alias-bg-layer-2)}
+.sorg-modeBtn.sorg-modeOn{background:var(--dsw-alias-state-business-primary);border-color:transparent;color:#fff;font-weight:600}
+.sorg-spawnHint{font-size:11px;color:var(--dsw-alias-label-secondary);line-height:15px}
 .sorg-btn:disabled{opacity:.5;cursor:default}
 .sorg-rail{width:100%;height:100%;align-items:center;justify-content:center;color:var(--dsw-alias-label-tertiary);display:flex;font-size:18px;cursor:pointer}
 .sorg-tabs{flex:none;display:flex;gap:2px;padding:0 8px 4px}
@@ -228,6 +235,40 @@ window.__ModuleLoader__.load({
           result: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerRestoreResult", schema: stubSchema },
           sourceLocation: { file: "dsh-organizer-sidebar/lib/host.js", line: 1, column: 1 },
         },
+        {
+          id: "dsh-organizer-sidebar#organizer/spawnSubagent",
+          service: "organizer",
+          namespace: "organizer",
+          method: "spawnSubagent",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerSpawnSubagentRequest", schema: stubSchema },
+            },
+          ],
+          result: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerSpawnSubagentResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-organizer-sidebar/lib/host.js", line: 1, column: 1 },
+        },
+        {
+          id: "dsh-organizer-sidebar#organizer/endSubagent",
+          service: "organizer",
+          namespace: "organizer",
+          method: "endSubagent",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerEndSubagentRequest", schema: stubSchema },
+            },
+          ],
+          result: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerEndSubagentResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-organizer-sidebar/lib/host.js", line: 1, column: 1 },
+        },
       ],
     };
 
@@ -360,6 +401,8 @@ window.__ModuleLoader__.load({
         var modal = modalState[0], setModal = modalState[1];
         var draftState = react.useState('');
         var draft = draftState[0], setDraft = draftState[1];
+        var spawnTaskState = react.useState('');
+        var spawnTask = spawnTaskState[0], setSpawnTask = spawnTaskState[1];
         var dragState = react.useState(null); // { sessionId, fromKey, over: {id, half} }
         var drag = dragState[0], setDrag = dragState[1];
         var dragOverGroupState = react.useState(null); // group id highlight
@@ -928,6 +971,8 @@ window.__ModuleLoader__.load({
           } else if (modal.kind === 'group-delete') {
             persist(groups.filter(function (g) { return g.id !== modal.id; }), order);
             setModal(null);
+          } else if (modal.kind === 'subagent-spawn') {
+            spawnSubagent(modal.id, name, modal.mode || 'new', spawnTask);
           }
         }
 
@@ -950,6 +995,7 @@ window.__ModuleLoader__.load({
               { id: 'rename', label: '重命名' },
               { id: 'fork', label: '复制会话' },
               { id: 'archive', label: '归档会话' },
+              { id: 'spawn-subagent', label: '拉起子智能体' },
             ],
           });
         }
@@ -981,10 +1027,13 @@ window.__ModuleLoader__.load({
             if (id === 'hide') hideWorkspace(m.id);
             if (id === 'unhide') unhideWorkspace(m.id);
             if (id === 'remove') removeWorkspace(m.id, m.title);
+          } else if (m.kind === 'subagent') {
+            if (id === 'end-subagent') endSubagent(m.parentId, m.id);
           } else {
             if (id === 'rename') renameSession(m.id);
             if (id === 'fork') forkSession(m.id);
             if (id === 'archive') archiveSession(m.id);
+            if (id === 'spawn-subagent') { setModal({ kind: 'subagent-spawn', id: m.id, title: titleOf(m.id), mode: 'new' }); setDraft(''); setSpawnTask(''); }
           }
         }
         // 已归档会话三点菜单(未进入批量模式时可用):单条还原 / 单条删除
@@ -1015,9 +1064,53 @@ window.__ModuleLoader__.load({
           }
         }
 
+        // 拉起子智能体:确认改名弹窗(modal.kind==='subagent-spawn')里的名称后调用端点。
+        function spawnSubagent(parentId, name, mode, task) {
+          var p = null;
+          try { p = ctx.get("remote.organizer").spawnSubagent({ parentSessionId: parentId, name: name, mode: mode, task: task }); } catch (e) { p = null; }
+          if (p && typeof p.then === 'function') {
+            p.then(function (r) {
+              var res = r && r.ok ? r.value : null;
+              if (res && res.ok) {
+                setModal(null);
+                window.alert('已拉起子智能体' + (res.childId ? '：' + res.childId : ''));
+              } else {
+                var errMsg = (res && res.error) || ((r && r.error && (r.error.message || r.error.code)) || '拉起失败');
+                window.alert('拉起失败：' + errMsg);
+              }
+            }, function () { window.alert('拉起失败：请求出错'); });
+          } else {
+            setModal(null);
+            window.alert('拉起失败：服务不可用');
+          }
+        }
+        // 子代理三点菜单:删除(结束)子智能体
+        function subagentMenu(e, parentId, cid) {
+          openMenuAt(e, {
+            kind: 'subagent', id: cid, parentId: parentId, items: [
+              { id: 'end-subagent', label: '删除(结束)子智能体', danger: true },
+            ],
+          });
+        }
+        // 结束子智能体:结束其当前运行(interrupt)。
+        function endSubagent(parentId, childId) {
+          if (!window.confirm('结束该子智能体？其当前运行将被中断。')) return;
+          var p = null;
+          try { p = ctx.get("remote.organizer").endSubagent({ childSessionId: childId, parentSessionId: parentId }); } catch (e) { p = null; }
+          if (p && typeof p.then === 'function') {
+            p.then(function (r) {
+              var res = r && r.ok ? r.value : null;
+              if (!(res && res.ok)) {
+                var errMsg = (res && res.error) || ((r && r.error && (r.error.message || r.error.code)) || '结束失败');
+                window.alert('结束失败：' + errMsg);
+              }
+            }, function () { window.alert('结束失败：请求出错'); });
+          }
+        }
+
         // ---- render helpers ----
         // 子 agent 行:自身运行中(running)显示绿点,等待用户(pendingInteraction)显示黄点
-        function childRow(cid) {
+        function childRow(cid, parentId) {
           var csummary = byId[cid];
           var cwaiting = csummary !== undefined && csummary.pendingInteraction !== undefined && csummary.pendingInteraction !== null;
           var cstatusDot = cwaiting ? 'sorg-dot-wait' : (csummary && csummary.running ? 'sorg-dot-run' : null);
@@ -1030,6 +1123,7 @@ window.__ModuleLoader__.load({
               cstatusDot !== null && react.createElement('span', { key: 'st', className: cstatusDot }),
               react.createElement('span', { className: 'sorg-name' }, childName(cid)),
               react.createElement('span', { className: 'sorg-time' }, timeOf(cid)),
+              react.createElement('button', { type: 'button', className: 'sorg-dots sorg-show', onClick: function (e) { subagentMenu(e, parentId, cid); } }, '\u22EF'),
             ],
           });
         }
@@ -1079,7 +1173,7 @@ window.__ModuleLoader__.load({
           });
           return react.createElement('div', { key: id, className: 'sorg-grp' },
             rowEl,
-            childOpen && react.createElement('div', { className: 'sorg-sub' }, children.map(childRow)),
+            childOpen && react.createElement('div', { className: 'sorg-sub' }, children.map(function (cid) { return childRow(cid, id); })),
           );
         }
 
@@ -1268,6 +1362,7 @@ window.__ModuleLoader__.load({
           : modal.kind === 'group-delete' ? '删除分组'
           : modal.kind === 'session-delete' ? '删除会话'
           : modal.kind === 'workspace-remove' ? '移除工作区'
+          : modal.kind === 'subagent-spawn' ? '拉起子智能体'
           : '重命名会话');
         var modalConfirmText = modal && (modal.kind === 'group-delete' || modal.kind === 'session-delete' || modal.kind === 'workspace-remove') ? '移除' : '确定';
         var modalConfirmDisabled = modal !== null && modal.kind !== 'group-delete' && modal.kind !== 'session-delete' && modal.kind !== 'workspace-remove' && draft.trim() === '';
@@ -1280,6 +1375,39 @@ window.__ModuleLoader__.load({
         } else if (modal !== null && modal.kind === 'workspace-remove') {
           modalChildren = react.createElement('div', null,
             '移除工作区"' + (modal.title || '') + '"？其下所有会话会被归档到「已归档」，工作区本身被删除。此操作不可撤销。');
+        } else if (modal !== null && modal.kind === 'subagent-spawn') {
+          // 命名弹窗:全新 / 继承 切换 + 名称输入
+          modalChildren = react.createElement('div', { className: 'sorg-spawnBody' },
+            react.createElement('div', { className: 'sorg-modeToggle' },
+              react.createElement('button', {
+                type: 'button',
+                className: 'sorg-modeBtn' + (modal.mode !== 'inherit' ? ' sorg-modeOn' : ''),
+                onClick: function () { setModal(Object.assign({}, modal, { mode: 'new' })); },
+              }, '全新'),
+              react.createElement('button', {
+                type: 'button',
+                className: 'sorg-modeBtn' + (modal.mode === 'inherit' ? ' sorg-modeOn' : ''),
+                onClick: function () { setModal(Object.assign({}, modal, { mode: 'inherit' })); },
+              }, '继承'),
+            ),
+            react.createElement('input', {
+              className: 'sorg-input',
+              value: draft,
+              autoFocus: true,
+              placeholder: '子智能体名称',
+              onChange: function (e) { setDraft(e.target.value); },
+              onKeyDown: function (e) { if (e.key === 'Enter') confirmRename(); },
+            }),
+            react.createElement('textarea', {
+              className: 'sorg-input sorg-taskArea',
+              rows: 4,
+              value: spawnTask,
+              placeholder: '任务（可省略，作为子智能体初始指令；继承模式下子代理已带父上下文）',
+              onChange: function (e) { setSpawnTask(e.target.value); },
+            }),
+            react.createElement('div', { className: 'sorg-spawnHint' },
+              modal.mode === 'inherit' ? '继承：子智能体将继承父会话的已完成轮次上下文。' : '全新：子智能体在独立上下文中运行，不继承父会话。'),
+          );
         } else {
           modalChildren = react.createElement('input', {
             className: 'sorg-input',

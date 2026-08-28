@@ -301,6 +301,69 @@ class SessionOrganizerService extends TypertRemoteService {
       return { ok: false, error: (e && e.message) ? String(e.message) : String(e) };
     }
   }
+
+  // 拉起子智能体:以 parentSessionId 为父,启动一个 continuable 子代理(名称=label)。
+  // 父会话必须是 live(agents.get 拿到 Agent 才能作 parent)。
+  // mode: 'new' = 全新(用 inheritsParentContext=false 的 provider,s'不继承'父上下文);
+  //       'inherit' = 继承(用 inheritsParentContext=true 的 provider,子代理继承父会话已完成轮次)。
+  // provider 从可用列表里挑支持 continuable(prepareContinuable)且匹配继承性的。
+  async spawnSubagent(request) {
+    const parentSessionId = request && request.parentSessionId;
+    const name = request && request.name;
+    const wantInherit = request && request.mode === 'inherit';
+    const task = request && request.task;
+    if (typeof parentSessionId !== 'string' || parentSessionId === '') return { ok: false, error: '缺少 parentSessionId' };
+    if (typeof name !== 'string' || name.trim() === '') return { ok: false, error: '缺少子智能体名称' };
+    const agents = this.ctx.get('agents');
+    if (agents === undefined) return { ok: false, error: 'agents 服务不可用' };
+    const parent = agents.get(parentSessionId);
+    if (parent === undefined) return { ok: false, error: '父会话未在运行，无法拉起子智能体' };
+    const subagents = this.ctx.get('subagents');
+    if (subagents === undefined) return { ok: false, error: 'subagents 服务不可用' };
+    try {
+      const names = subagents.list();
+      let provider = null;
+      for (const n of names) {
+        const p = subagents.getProvider(n);
+        if (p && typeof p.prepareContinuable === 'function' && !!p.inheritsParentContext === wantInherit) { provider = n; break; }
+      }
+      if (provider === null) return { ok: false, error: wantInherit ? '没有可用的继承型子代理 provider' : '没有可用的 continuable 子代理 provider' };
+      const label = name.trim();
+      // 任务优先;未填任务则用缺省"确认就绪"(继承模式提示已带父上下文)。
+      const taskText = (typeof task === 'string' && task.trim() !== '') ? task.trim()
+        : (wantInherit
+          ? '你是一个子智能体，名称「' + label + '」，已继承父会话的上下文。请回复一句话确认就绪，然后等待父会话发送任务。'
+          : '你是一个子智能体，名称「' + label + '」。请回复一句话确认就绪，然后等待父会话发送任务。');
+      const prompt = [{ type: 'text', text: taskText }];
+      const ctrl = new AbortController();
+      const start = await subagents.startContinuable({
+        provider,
+        label,
+        request: { prompt, parent },
+        signal: ctrl.signal,
+      });
+      return { ok: true, childId: start && start.childId };
+    } catch (e) {
+      return { ok: false, error: (e && e.message) ? String(e.message) : String(e) };
+    }
+  }
+
+  // 结束子智能体:对目标子代理发出 interrupt(取消其当前 Activation)。
+  // authority 用 user + 父会话地址(子代理行的父即所在会话)。
+  async endSubagent(request) {
+    const childId = request && request.childSessionId;
+    const parentId = request && request.parentSessionId;
+    if (typeof childId !== 'string' || childId === '') return { ok: false, error: '缺少 childSessionId' };
+    if (typeof parentId !== 'string' || parentId === '') return { ok: false, error: '缺少 parentSessionId' };
+    const subagents = this.ctx.get('subagents');
+    if (subagents === undefined) return { ok: false, error: 'subagents 服务不可用' };
+    try {
+      subagents.interrupt(childId, { kind: 'user', parentSessionId: parentId });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e && e.message) ? String(e.message) : String(e) };
+    }
+  }
 }
 
 export default {

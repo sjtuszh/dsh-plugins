@@ -353,3 +353,15 @@ if (s.baseline === null) {
 - 静态本体化包 `sidebar-manager-static/` 源码就绪（双包 + Typert，清单过校验器），**待实验区 UX 验收后安装**（重启由用户执行）。
 - 待用户：① 实验区 UX 验收；② 拍板本体化 A（静态挂载）/ B（补丁官方 `dsh-client-ui-workspace/lib/client.js`，112KB 可读，升级会被覆盖）。
 - 静态化建议路径：先只固化文件浏览器（双包分离）验证跑通，再动计费
+
+### 12.6 子智能体管理（dsh-organizer-sidebar v1.2.0，2026-08）
+
+功能：会话 ⋯ 菜单新增**拉起子智能体**（命名弹窗），子代理行新增 ⋯ **删除(结束)子智能体**。
+
+- **spawnSubagent**（host）：`ctx.subagents.startContinuable({ provider, label: name, request: { prompt, parent }, signal })`——`parent` 必须是 live Agent（`ctx.agents.get(parentSessionId)`）；provider 从 `subagents.list()` 里挑支持 `prepareContinuable` 的；初始 prompt 仅为"确认就绪"。
+- **endSubagent**（host）：`ctx.subagents.interrupt(childId, { kind: 'user', parentSessionId })`（authority 用 user + 父会话地址；interrupt 是"结束当前运行"的语义，子会话保留）。
+- **全新 / 继承 两种模式（用户追加）**：`inheritsParentContext` 是 **provider 级属性**（`dsh-subagent-spawn-in-process` 默认名 `spawn`、false=全新；`dsh-subagent-fork-in-process` 默认名 `fork`、true=继承父上下文）。`spawnSubagent` 加 `mode`（'new'/'inherit'）按 `!!p.inheritsParentContext === wantInherit` 选 provider；命名弹窗加「全新/继承」切换按钮（`modal.mode`）+ 名称输入。
+- **任务输入（用户追加）**：弹窗加 task textarea（`spawnTask` state），`spawnSubagent` 优先用 `task` 作为初始 prompt，未填则回退"确认就绪"。typert schema/mode/task 均为 optional。
+- **继承为何"像全新"（重要因果）**：fork provider 的 seed = `completedTurnPrefix(parent)`（父会话**已完成轮次**到最后一个 `turn/end`）。**父会话当前没有已完成 turn 时 seed 为空 → 子代理从零开始（官方行为）**。所以测试继承要用有已完成轮次的父会话；子代理日志里继承轮次在确认/prompt 之前，需打开子会话确认。
+- client：子代理行 ⋯ 走 `subagentMenu(e, parentId, cid)` → 菜单 kind 'subagent'；命名弹窗复用现有 modal（kind 'subagent-spawn'，文本输入 + confirmRename 分支）；调 `ctx.get("remote.organizer").spawnSubagent/endSubagent`。
+- 注意：`interrupt` 需要 parent 地址（client 子代菜单总是带 parentId）；host `listChildren` 是异步，别在同步链路里用。已同步安装副本 1.2.0，待重启验证。
