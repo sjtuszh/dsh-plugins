@@ -286,6 +286,23 @@ window.__ModuleLoader__.load({
           result: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerForkSubagentResult", schema: stubSchema },
           sourceLocation: { file: "dsh-organizer-sidebar/lib/host.js", line: 1, column: 1 },
         },
+        {
+          id: "dsh-organizer-sidebar#organizer/renameSubagent",
+          service: "organizer",
+          namespace: "organizer",
+          method: "renameSubagent",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerRenameSubagentRequest", schema: stubSchema },
+            },
+          ],
+          result: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerRenameSubagentResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-organizer-sidebar/lib/host.js", line: 1, column: 1 },
+        },
       ],
     };
 
@@ -612,7 +629,9 @@ window.__ModuleLoader__.load({
           if (childrenOf[p2].some(isAgentTeamsChild)) agentTeamsParents.add(p2);
         }
         function childName(cid) {
-          // 子智能体允许重命名:显式 durable session title 优先于不可变 descriptor label。
+          // 子智能体显示名:重命名后的 durable session title 优先(renameSubagent 写好);
+          // 否则用不可变的 descriptor label(准确成员名)。不要用 displayTitle——子代理
+          // 继承父 cwd,displayTitle 会是父工作区名("父会话名字"),是错误的。
           var summary = byId[cid];
           if (summary && typeof summary.title === 'string' && summary.title.trim() !== '') return summary.title;
           var raw = childLabels[cid];
@@ -994,6 +1013,8 @@ window.__ModuleLoader__.load({
             setModal(null);
           } else if (modal.kind === 'subagent-spawn') {
             spawnSubagent(modal.id, name, modal.mode || 'new', spawnTask);
+          } else if (modal.kind === 'subagent-rename') {
+            renameSubagentHost(modal.id, name);
           }
         }
 
@@ -1049,7 +1070,7 @@ window.__ModuleLoader__.load({
             if (id === 'unhide') unhideWorkspace(m.id);
             if (id === 'remove') removeWorkspace(m.id, m.title);
           } else if (m.kind === 'subagent') {
-            if (id === 'rename-subagent') renameSession(m.id);
+            if (id === 'rename-subagent') { setModal({ kind: 'subagent-rename', id: m.id, title: childName(m.id) }); setDraft(childName(m.id)); }
             if (id === 'fork-subagent') forkSubagent(m.id, m.name || childName(m.id));
             if (id === 'end-subagent') endSubagent(m.parentId, m.id);
           } else {
@@ -1123,6 +1144,23 @@ window.__ModuleLoader__.load({
             }, function () { window.alert('分叉复制失败：请求出错'); });
           } else {
             window.alert('分叉复制失败：服务不可用');
+          }
+        }
+        // 重命名子代理:descriptor label 不可变,这里经 host 改会话 durable title。
+        function renameSubagentHost(sessionId, name) {
+          var p = null;
+          try { p = ctx.get("remote.organizer").renameSubagent({ sessionId: sessionId, name: name }); } catch (e) { p = null; }
+          if (p && typeof p.then === 'function') {
+            p.then(function (r) {
+              var res = r && r.ok ? r.value : null;
+              if (res && res.ok) { setModal(null); }
+              else {
+                var errMsg = (res && res.error) || ((r && r.error && (r.error.message || r.error.code)) || '重命名失败');
+                window.alert('重命名失败：' + errMsg);
+              }
+            }, function () { window.alert('重命名失败：请求出错'); });
+          } else {
+            window.alert('重命名失败：服务不可用');
           }
         }
         // 子代理三点菜单:重命名 / 分叉复制 / 删除(结束)
@@ -1421,6 +1459,7 @@ window.__ModuleLoader__.load({
           : modal.kind === 'session-delete' ? '删除会话'
           : modal.kind === 'workspace-remove' ? '移除工作区'
           : modal.kind === 'subagent-spawn' ? '拉起子智能体'
+          : modal.kind === 'subagent-rename' ? '重命名子智能体'
           : '重命名会话');
         var modalConfirmText = modal && (modal.kind === 'group-delete' || modal.kind === 'session-delete' || modal.kind === 'workspace-remove') ? '移除' : '确定';
         var modalConfirmDisabled = modal !== null && modal.kind !== 'group-delete' && modal.kind !== 'session-delete' && modal.kind !== 'workspace-remove' && draft.trim() === '';

@@ -316,8 +316,9 @@ class SessionOrganizerService extends TypertRemoteService {
     if (typeof name !== 'string' || name.trim() === '') return { ok: false, error: '缺少子智能体名称' };
     const agents = this.ctx.get('agents');
     if (agents === undefined) return { ok: false, error: 'agents 服务不可用' };
-    const parent = agents.get(parentSessionId);
-    if (parent === undefined) return { ok: false, error: '父会话未在运行，无法拉起子智能体' };
+    const ctrl = new AbortController();
+    const parent = agents.get(parentSessionId) || (await this._resolveAgent(parentSessionId, ctrl.signal));
+    if (parent === undefined) return { ok: false, error: '父会话无法恢复，无法拉起子智能体' };
     const subagents = this.ctx.get('subagents');
     if (subagents === undefined) return { ok: false, error: 'subagents 服务不可用' };
     try {
@@ -335,7 +336,6 @@ class SessionOrganizerService extends TypertRemoteService {
           ? '你是一个子智能体，名称「' + label + '」，已继承父会话的上下文。请回复一句话确认就绪，然后等待父会话发送任务。'
           : '你是一个子智能体，名称「' + label + '」。请回复一句话确认就绪，然后等待父会话发送任务。');
       const prompt = [{ type: 'text', text: taskText }];
-      const ctrl = new AbortController();
       const start = await subagents.startContinuable({
         provider,
         label,
@@ -405,6 +405,27 @@ class SessionOrganizerService extends TypertRemoteService {
       const prompt = [{ type: 'text', text: '你是子智能体「' + base + '」的分叉副本「' + label + '」，已继承源子智能体的上下文。请确认就绪并等待任务。' }];
       const started = await subagents.startContinuable({ provider, label, request: { prompt, parent: source }, signal: ctrl.signal });
       return { ok: true, childId: started.childId, name: label };
+    } catch (e) {
+      return { ok: false, error: (e && e.message) ? String(e.message) : String(e) };
+    }
+  }
+
+  // 重命名子代理:descriptor label 不可变,但会话标题可改。子代理常未列入会话列表,
+  // 客户端 binding 取不到 → 这里用 _resolveAgent(冷恢复)拿 live Session,
+  // 再 sessionTitle.rename(durable title)。重命名后 childName 优先显示 title。
+  async renameSubagent(request) {
+    const sessionId = request && request.sessionId;
+    const name = request && request.name;
+    if (typeof sessionId !== 'string' || sessionId === '') return { ok: false, error: '缺少 sessionId' };
+    if (typeof name !== 'string' || name.trim() === '') return { ok: false, error: '缺少名称' };
+    const st = this.ctx.get('sessionTitle');
+    if (st === undefined) return { ok: false, error: 'sessionTitle 服务不可用' };
+    const ctrl = new AbortController();
+    try {
+      const agent = await this._resolveAgent(sessionId, ctrl.signal);
+      if (agent === undefined || agent.session === undefined) return { ok: false, error: '子代理无法恢复，无法重命名' };
+      st.rename(agent.session, name.trim());
+      return { ok: true };
     } catch (e) {
       return { ok: false, error: (e && e.message) ? String(e.message) : String(e) };
     }

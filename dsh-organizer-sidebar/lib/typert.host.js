@@ -179,6 +179,22 @@ const organizerForkSubagentResult$schema = z.union([
   }),
 ]);
 
+// 重命名子代理:会话 id + 新名称(改 durable session title)。
+const organizerRenameSubagentRequest$schema = z.object({
+  sessionId: z.string(),
+  name: z.string(),
+});
+
+const organizerRenameSubagentResult$schema = z.union([
+  z.object({
+    ok: z.literal(true),
+  }),
+  z.object({
+    ok: z.literal(false),
+    error: z.string(),
+  }),
+]);
+
 export const TYPERT = {
   package: 'dsh-organizer-sidebar',
   face: 'host',
@@ -434,6 +450,31 @@ export const TYPERT = {
       },
       sourceLocation: { file: 'dsh-organizer-sidebar/lib/host.js', line: 1, column: 1 },
     },
+    {
+      id: 'dsh-organizer-sidebar#organizer/renameSubagent',
+      service: 'organizer',
+      namespace: 'organizer',
+      method: 'renameSubagent',
+      invocation: { kind: 'direct' },
+      parameters: [
+        {
+          name: 'request',
+          wire: 'request',
+          source: 'json',
+          codec: {
+            mode: 'strict',
+            typeSymbol: 'dsh-organizer-sidebar/types#OrganizerRenameSubagentRequest',
+            schema: organizerRenameSubagentRequest$schema,
+          },
+        },
+      ],
+      result: {
+        mode: 'strict',
+        typeSymbol: 'dsh-organizer-sidebar/types#OrganizerRenameSubagentResult',
+        schema: organizerRenameSubagentResult$schema,
+      },
+      sourceLocation: { file: 'dsh-organizer-sidebar/lib/host.js', line: 1, column: 1 },
+    },
   ],
   model: {
     services: [
@@ -514,6 +555,13 @@ export const TYPERT = {
             signature: 'async forkSubagent(request: OrganizerForkSubagentRequest): Promise<OrganizerForkSubagentResult>',
             summary: '分叉复制子智能体:继承源子代理上下文,名称递增去重。',
             jsDoc: '/**\n * 分叉复制子智能体。\n * @param request - 源子代理 id 与显示名。\n * @returns 新子代理 id 与唯一递增名称。\n */',
+          },
+          {
+            kind: 'method',
+            name: 'renameSubagent',
+            signature: 'async renameSubagent(request: OrganizerRenameSubagentRequest): Promise<OrganizerRenameSubagentResult>',
+            summary: '重命名子代理:改 durable session title。',
+            jsDoc: '/**\n * 重命名子代理。\n * @param request - 子代理会话 id 与新名称。\n * @returns 成功或错误信息。\n */',
           },
         ],
         types: [
@@ -600,6 +648,14 @@ export const TYPERT = {
           {
             name: 'OrganizerForkSubagentResult',
             declaration: 'export type OrganizerForkSubagentResult = { ok: true; childId: string; name: string } | { ok: false; error: string };',
+          },
+          {
+            name: 'OrganizerRenameSubagentRequest',
+            declaration: 'export interface OrganizerRenameSubagentRequest {\n    readonly sessionId: string;\n    readonly name: string;\n}',
+          },
+          {
+            name: 'OrganizerRenameSubagentResult',
+            declaration: 'export type OrganizerRenameSubagentResult = { ok: true } | { ok: false; error: string };',
           },
         ],
       },
