@@ -354,14 +354,16 @@ if (s.baseline === null) {
 - 待用户：① 实验区 UX 验收；② 拍板本体化 A（静态挂载）/ B（补丁官方 `dsh-client-ui-workspace/lib/client.js`，112KB 可读，升级会被覆盖）。
 - 静态化建议路径：先只固化文件浏览器（双包分离）验证跑通，再动计费
 
-### 12.6 子智能体管理（dsh-organizer-sidebar v1.2.0，2026-08）
+### 12.6 子智能体管理（dsh-organizer-sidebar v1.3.1，2026-08）
 
-功能：会话 ⋯ 菜单新增**拉起子智能体**（命名弹窗），子代理行新增 ⋯ **删除(结束)子智能体**。
+功能：会话 ⋯ 菜单新增**拉起子智能体**（全新/继承 + 名称 + 任务），子代理行 ⋯ 新增**重命名 / 分叉复制 / 删除(结束)**。
 
-- **spawnSubagent**（host）：`ctx.subagents.startContinuable({ provider, label: name, request: { prompt, parent }, signal })`——`parent` 必须是 live Agent（`ctx.agents.get(parentSessionId)`）；provider 从 `subagents.list()` 里挑支持 `prepareContinuable` 的；初始 prompt 仅为"确认就绪"。
-- **endSubagent**（host）：`ctx.subagents.interrupt(childId, { kind: 'user', parentSessionId })`（authority 用 user + 父会话地址；interrupt 是"结束当前运行"的语义，子会话保留）。
-- **全新 / 继承 两种模式（用户追加）**：`inheritsParentContext` 是 **provider 级属性**（`dsh-subagent-spawn-in-process` 默认名 `spawn`、false=全新；`dsh-subagent-fork-in-process` 默认名 `fork`、true=继承父上下文）。`spawnSubagent` 加 `mode`（'new'/'inherit'）按 `!!p.inheritsParentContext === wantInherit` 选 provider；命名弹窗加「全新/继承」切换按钮（`modal.mode`）+ 名称输入。
-- **任务输入（用户追加）**：弹窗加 task textarea（`spawnTask` state），`spawnSubagent` 优先用 `task` 作为初始 prompt，未填则回退"确认就绪"。typert schema/mode/task 均为 optional。
-- **继承为何"像全新"（重要因果）**：fork provider 的 seed = `completedTurnPrefix(parent)`（父会话**已完成轮次**到最后一个 `turn/end`）。**父会话当前没有已完成 turn 时 seed 为空 → 子代理从零开始（官方行为）**。所以测试继承要用有已完成轮次的父会话；子代理日志里继承轮次在确认/prompt 之前，需打开子会话确认。
-- client：子代理行 ⋯ 走 `subagentMenu(e, parentId, cid)` → 菜单 kind 'subagent'；命名弹窗复用现有 modal（kind 'subagent-spawn'，文本输入 + confirmRename 分支）；调 `ctx.get("remote.organizer").spawnSubagent/endSubagent`。
-- 注意：`interrupt` 需要 parent 地址（client 子代菜单总是带 parentId）；host `listChildren` 是异步，别在同步链路里用。已同步安装副本 1.2.0，待重启验证。
+- **spawnSubagent**（host）：`ctx.subagents.startContinuable({ provider, label: name, request: { prompt, parent }, signal })`——`parent` 必须是 live Agent（`ctx.agents.get(parentSessionId)`）；provider 从 `subagents.list()` 里挑支持 `prepareContinuable` 的。
+- **删除(结束)流程（参照 dsh-xchat stop）**：① `interrupt` 当前 turn（user authority，失败回退 ancestor）；② **父 live 时** `drainContinuableChildren(parent,[childId])` 真正释放 Activation/AgentHandle；③ `workspaceRegistry.archiveSession(childId)` 归档会话、从侧栏表面消失（可还原）。**不要求父 live**：interrupt 用 `{kind:'user', parentSessionId}` 即可；父非 live 时跳过 drain（降级）。
+- **全新 / 继承**：`inheritsParentContext` 是 provider 级属性（`spawn` false=全新；`fork` true=继承）。fork seed = `completedTurnPrefix(parent)`（父会话**已完成轮次**到最后 `turn/end`）；父无完成轮次时 seed 为空→像全新（官方行为）。
+- **任务输入**：弹窗 task textarea；`spawnSubagent` 优先用 task 作初始 prompt，未填回退"确认就绪"。
+- **重命名子代理**：descriptor label 不可变，但子代理也是 Session，可写 durable session title；`childName` 改为显式 `summary.title` 优先于 descriptor label，复用现有 session-rename modal 即可生效。
+- **分叉复制子代理**：Host `forkSubagent(sourceChildId,sourceName)` 用 fork provider + `parent=源子代理 Agent`，因此是真正继承源上下文的**嵌套子代理**（公开 API 无法同级 reparent）；client `childRow` 改递归显示子代。名称算法：foo→foo 2→foo 3；源名已带尾号则递增；`listChildren(sourceId)` 去重。源子代理可能是**冷/已停** → 用 `_resolveAgent`（参照 dsh-xchat `getParentAgent`：`agents.get` 未命中则 `sessionQuery.listSessions` 查 header + `agents.resume({ resumeSessionId, setup })`）冷恢复成 live Agent 再分叉。
+- **释放后从列表中消失（v1.3.1）**：`childrenOf` 最终过滤加 `!archived.has(id)`（`subagentsByParent` catalog 会保留已归档子代），使已释放/删除的子代理不再出现在「展开子智能体列表」。
+- client：子代理行 ⋯ 菜单 kind 'subagent'（rename-subagent/fork-subagent/end-subagent）；调 `ctx.get("remote.organizer").spawnSubagent/forkSubagent/endSubagent`。
+- 注意：host `listChildren` 是异步；fork 源子代理冷恢复依赖 `agents.resume` 支持该会话（persisted session 可恢复）。已同步安装副本 1.3.1，待重启验证。

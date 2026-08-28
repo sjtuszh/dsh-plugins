@@ -269,6 +269,23 @@ window.__ModuleLoader__.load({
           result: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerEndSubagentResult", schema: stubSchema },
           sourceLocation: { file: "dsh-organizer-sidebar/lib/host.js", line: 1, column: 1 },
         },
+        {
+          id: "dsh-organizer-sidebar#organizer/forkSubagent",
+          service: "organizer",
+          namespace: "organizer",
+          method: "forkSubagent",
+          invocation: { kind: "direct" },
+          parameters: [
+            {
+              name: "request",
+              wire: "request",
+              source: "json",
+              codec: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerForkSubagentRequest", schema: stubSchema },
+            },
+          ],
+          result: { mode: "strict", typeSymbol: "dsh-organizer-sidebar/types#OrganizerForkSubagentResult", schema: stubSchema },
+          sourceLocation: { file: "dsh-organizer-sidebar/lib/host.js", line: 1, column: 1 },
+        },
       ],
     };
 
@@ -580,7 +597,8 @@ window.__ModuleLoader__.load({
         for (var ck of Object.keys(childrenOf)) {
           // catalog 里的 child id 可能不在 byId(已删除/对账中),排序前过滤掉,
           // 否则 byId[a].createdAt 抛 TypeError 崩溃整个侧边栏。
-          childrenOf[ck] = childrenOf[ck].filter(function (id) { return byId[id] !== undefined; });
+          // 归档(已释放/删除)的子代理也从展开子智能体列表里剔除,避免"删了还在"。
+          childrenOf[ck] = childrenOf[ck].filter(function (id) { return byId[id] !== undefined && !archived.has(id); });
           childrenOf[ck].sort(function (a, b) { return (byId[a].createdAt || 0) - (byId[b].createdAt || 0); });
         }
         // subagent label → display name: strip the 'agent-teams:' prefix so a
@@ -594,6 +612,9 @@ window.__ModuleLoader__.load({
           if (childrenOf[p2].some(isAgentTeamsChild)) agentTeamsParents.add(p2);
         }
         function childName(cid) {
+          // 子智能体允许重命名:显式 durable session title 优先于不可变 descriptor label。
+          var summary = byId[cid];
+          if (summary && typeof summary.title === 'string' && summary.title.trim() !== '') return summary.title;
           var raw = childLabels[cid];
           if (raw !== undefined) {
             var idx = raw.indexOf(':');
@@ -1028,6 +1049,8 @@ window.__ModuleLoader__.load({
             if (id === 'unhide') unhideWorkspace(m.id);
             if (id === 'remove') removeWorkspace(m.id, m.title);
           } else if (m.kind === 'subagent') {
+            if (id === 'rename-subagent') renameSession(m.id);
+            if (id === 'fork-subagent') forkSubagent(m.id, m.name || childName(m.id));
             if (id === 'end-subagent') endSubagent(m.parentId, m.id);
           } else {
             if (id === 'rename') renameSession(m.id);
@@ -1084,17 +1107,37 @@ window.__ModuleLoader__.load({
             window.alert('拉起失败：服务不可用');
           }
         }
-        // 子代理三点菜单:删除(结束)子智能体
+        // 分叉复制子智能体:Host 用 fork provider 继承源子代理上下文,名称自动递增去重。
+        function forkSubagent(sourceChildId, sourceName) {
+          var p = null;
+          try { p = ctx.get("remote.organizer").forkSubagent({ sourceChildId: sourceChildId, sourceName: sourceName }); } catch (e) { p = null; }
+          if (p && typeof p.then === 'function') {
+            p.then(function (r) {
+              var res = r && r.ok ? r.value : null;
+              if (res && res.ok) {
+                window.alert('已分叉复制子智能体：' + (res.name || res.childId));
+              } else {
+                var errMsg = (res && res.error) || ((r && r.error && (r.error.message || r.error.code)) || '分叉复制失败');
+                window.alert('分叉复制失败：' + errMsg);
+              }
+            }, function () { window.alert('分叉复制失败：请求出错'); });
+          } else {
+            window.alert('分叉复制失败：服务不可用');
+          }
+        }
+        // 子代理三点菜单:重命名 / 分叉复制 / 删除(结束)
         function subagentMenu(e, parentId, cid) {
           openMenuAt(e, {
-            kind: 'subagent', id: cid, parentId: parentId, items: [
+            kind: 'subagent', id: cid, parentId: parentId, name: childName(cid), items: [
+              { id: 'rename-subagent', label: '重命名' },
+              { id: 'fork-subagent', label: '分叉复制' },
               { id: 'end-subagent', label: '删除(结束)子智能体', danger: true },
             ],
           });
         }
-        // 结束子智能体:结束其当前运行(interrupt)。
+        // 删除(结束)子智能体:Host interrupt + drain 释放 + 归档会话,从侧栏表面消失。
         function endSubagent(parentId, childId) {
-          if (!window.confirm('结束该子智能体？其当前运行将被中断。')) return;
+          if (!window.confirm('删除(结束)该子智能体？将中断运行、释放资源并归档其会话记录。')) return;
           var p = null;
           try { p = ctx.get("remote.organizer").endSubagent({ childSessionId: childId, parentSessionId: parentId }); } catch (e) { p = null; }
           if (p && typeof p.then === 'function') {
@@ -1110,15 +1153,26 @@ window.__ModuleLoader__.load({
 
         // ---- render helpers ----
         // 子 agent 行:自身运行中(running)显示绿点,等待用户(pendingInteraction)显示黄点
+        // 子代理行支持递归子代(分叉复制是源子代理的真正 fork 子代理,自然嵌套在源下)。
         function childRow(cid, parentId) {
           var csummary = byId[cid];
+          var kids = childrenOf[cid] || [];
           var cwaiting = csummary !== undefined && csummary.pendingInteraction !== undefined && csummary.pendingInteraction !== null;
-          var cstatusDot = cwaiting ? 'sorg-dot-wait' : (csummary && csummary.running ? 'sorg-dot-run' : null);
-          return react.createElement('div', {
-            key: cid,
+          var hasActiveChild = kids.some(function (k) {
+            var s = byId[k];
+            return s !== undefined && (s.running || (s.pendingInteraction !== undefined && s.pendingInteraction !== null));
+          });
+          var cstatusDot = cwaiting ? 'sorg-dot-wait' : (csummary && csummary.running ? 'sorg-dot-run' : (hasActiveChild ? 'sorg-dot-run' : null));
+          var childKey = 's:' + cid;
+          var childOpen = expanded[childKey] === true;
+          var rowEl = react.createElement('div', {
             className: 'sorg-row sorg-title-sm sorg-child',
             onClick: function () { openSession(cid); },
             children: [
+              kids.length > 0 && react.createElement('span', {
+                key: 'cr', className: 'sorg-caret',
+                onClick: function (e) { e.stopPropagation(); toggleExpanded(childKey); },
+              }, childOpen ? '\u25BE' : '\u25B8'),
               react.createElement('span', { className: 'sorg-ico' }, isAgentTeamsChild(cid) ? WORKER_ICON : SUBAGENT_ICON),
               cstatusDot !== null && react.createElement('span', { key: 'st', className: cstatusDot }),
               react.createElement('span', { className: 'sorg-name' }, childName(cid)),
@@ -1126,6 +1180,10 @@ window.__ModuleLoader__.load({
               react.createElement('button', { type: 'button', className: 'sorg-dots sorg-show', onClick: function (e) { subagentMenu(e, parentId, cid); } }, '\u22EF'),
             ],
           });
+          return react.createElement('div', { key: cid, className: 'sorg-grp' },
+            rowEl,
+            childOpen && react.createElement('div', { className: 'sorg-sub' }, kids.map(function (kid) { return childRow(kid, cid); })),
+          );
         }
 
         function row(key, id) {

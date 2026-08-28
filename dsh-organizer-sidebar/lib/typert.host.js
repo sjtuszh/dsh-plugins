@@ -161,6 +161,24 @@ const organizerEndSubagentResult$schema = z.union([
   }),
 ]);
 
+// 分叉复制子智能体:源子代理 id + 当前显示名称;返回唯一递增名称。
+const organizerForkSubagentRequest$schema = z.object({
+  sourceChildId: z.string(),
+  sourceName: z.string(),
+});
+
+const organizerForkSubagentResult$schema = z.union([
+  z.object({
+    ok: z.literal(true),
+    childId: z.string(),
+    name: z.string(),
+  }),
+  z.object({
+    ok: z.literal(false),
+    error: z.string(),
+  }),
+]);
+
 export const TYPERT = {
   package: 'dsh-organizer-sidebar',
   face: 'host',
@@ -391,6 +409,31 @@ export const TYPERT = {
       },
       sourceLocation: { file: 'dsh-organizer-sidebar/lib/host.js', line: 1, column: 1 },
     },
+    {
+      id: 'dsh-organizer-sidebar#organizer/forkSubagent',
+      service: 'organizer',
+      namespace: 'organizer',
+      method: 'forkSubagent',
+      invocation: { kind: 'direct' },
+      parameters: [
+        {
+          name: 'request',
+          wire: 'request',
+          source: 'json',
+          codec: {
+            mode: 'strict',
+            typeSymbol: 'dsh-organizer-sidebar/types#OrganizerForkSubagentRequest',
+            schema: organizerForkSubagentRequest$schema,
+          },
+        },
+      ],
+      result: {
+        mode: 'strict',
+        typeSymbol: 'dsh-organizer-sidebar/types#OrganizerForkSubagentResult',
+        schema: organizerForkSubagentResult$schema,
+      },
+      sourceLocation: { file: 'dsh-organizer-sidebar/lib/host.js', line: 1, column: 1 },
+    },
   ],
   model: {
     services: [
@@ -462,8 +505,15 @@ export const TYPERT = {
             kind: 'method',
             name: 'endSubagent',
             signature: 'async endSubagent(request: OrganizerEndSubagentRequest): Promise<OrganizerEndSubagentResult>',
-            summary: '结束子智能体:对目标子代理发出 interrupt。',
+            summary: '结束子智能体:interrupt + drain 释放 + 归档会话。',
             jsDoc: '/**\n * 结束子智能体。\n * @param request - 子代理 id 与其父会话 id。\n * @returns 成功或错误信息。\n */',
+          },
+          {
+            kind: 'method',
+            name: 'forkSubagent',
+            signature: 'async forkSubagent(request: OrganizerForkSubagentRequest): Promise<OrganizerForkSubagentResult>',
+            summary: '分叉复制子智能体:继承源子代理上下文,名称递增去重。',
+            jsDoc: '/**\n * 分叉复制子智能体。\n * @param request - 源子代理 id 与显示名。\n * @returns 新子代理 id 与唯一递增名称。\n */',
           },
         ],
         types: [
@@ -542,6 +592,14 @@ export const TYPERT = {
           {
             name: 'OrganizerEndSubagentResult',
             declaration: 'export type OrganizerEndSubagentResult = { ok: true } | { ok: false; error: string };',
+          },
+          {
+            name: 'OrganizerForkSubagentRequest',
+            declaration: 'export interface OrganizerForkSubagentRequest {\n    readonly sourceChildId: string;\n    readonly sourceName: string;\n}',
+          },
+          {
+            name: 'OrganizerForkSubagentResult',
+            declaration: 'export type OrganizerForkSubagentResult = { ok: true; childId: string; name: string } | { ok: false; error: string };',
           },
         ],
       },

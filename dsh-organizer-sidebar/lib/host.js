@@ -348,17 +348,94 @@ class SessionOrganizerService extends TypertRemoteService {
     }
   }
 
-  // 结束子智能体:对目标子代理发出 interrupt(取消其当前 Activation)。
-  // authority 用 user + 父会话地址(子代理行的父即所在会话)。
+  // 解析一个可能冷/已停的会话到 live Agent(参照 dsh-xchat getParentAgent):
+  // 先 agents.get;未命中则 sessionQuery 查 header,再 agents.resume({ resumeSessionId, setup })。
+  async _resolveAgent(id, signal) {
+    const agents = this.ctx.get('agents');
+    if (agents === undefined) return undefined;
+    const live = agents.get(id);
+    if (live !== undefined) return live;
+    let setup;
+    try {
+      const recs = await this.ctx.get('sessionQuery').listSessions(signal);
+      const rec = recs.find((r) => String(r.header.id) === String(id));
+      const presetId = rec && rec.header.agentPreset ? rec.header.agentPreset : undefined;
+      if (presetId) setup = async (agentCtx) => { await this.ctx.get('agentPresets').mount(agentCtx, presetId); };
+    } catch (e) { /* 无 sessionQuery 或查不到 → 无 setup */ }
+    const handle = await agents.resume({
+      resumeSessionId: id,
+      ...(signal ? { signal } : {}),
+      ...(setup ? { setup } : {}),
+    });
+    return handle.agent;
+  }
+
+  // 分叉复制子智能体:以源子代理 Agent 为 parent,使用继承型 provider(fork),
+  // 因而新子代理是真正继承源子代理上下文的**嵌套子代理**。名称按原名递增:
+  // foo → foo 2 → foo 3;已存在标签用 listChildren(sourceId) 去重。
+  // 源子代理可能已停止 → 先 _resolveAgent 冷恢复。
+  async forkSubagent(request) {
+    const sourceId = request && request.sourceChildId;
+    const sourceName = request && request.sourceName;
+    if (typeof sourceId !== 'string' || sourceId === '') return { ok: false, error: '缺少 sourceChildId' };
+    const subagents = this.ctx.get('subagents');
+    if (subagents === undefined) return { ok: false, error: 'subagents 服务不可用' };
+    const ctrl = new AbortController();
+    try {
+      let source = this.ctx.get('agents') && this.ctx.get('agents').get(sourceId);
+      if (source === undefined) source = await this._resolveAgent(sourceId, ctrl.signal);
+      if (source === undefined) return { ok: false, error: '源子智能体无法恢复，无法分叉复制' };
+      let provider = null;
+      for (const n of subagents.list()) {
+        const p = subagents.getProvider(n);
+        if (p && typeof p.prepareContinuable === 'function' && p.inheritsParentContext === true) { provider = n; break; }
+      }
+      if (provider === null) return { ok: false, error: '没有可用的继承型子代理 provider' };
+      const existing = await subagents.listChildren(sourceId);
+      const labels = new Set();
+      for (const entry of existing) {
+        if (entry && entry.kind === 'child' && typeof entry.label === 'string') labels.add(entry.label);
+      }
+      let base = (typeof sourceName === 'string' && sourceName.trim() !== '') ? sourceName.trim() : '子智能体';
+      let n = 2;
+      const m = base.match(/^(.*)\s+(\d+)$/);
+      if (m && m[1] && Number.isSafeInteger(Number(m[2]))) { base = m[1]; n = Number(m[2]) + 1; }
+      let label = base + ' ' + n;
+      while (labels.has(label)) { n += 1; label = base + ' ' + n; }
+      const prompt = [{ type: 'text', text: '你是子智能体「' + base + '」的分叉副本「' + label + '」，已继承源子智能体的上下文。请确认就绪并等待任务。' }];
+      const started = await subagents.startContinuable({ provider, label, request: { prompt, parent: source }, signal: ctrl.signal });
+      return { ok: true, childId: started.childId, name: label };
+    } catch (e) {
+      return { ok: false, error: (e && e.message) ? String(e.message) : String(e) };
+    }
+  }
+
+  // 结束/删除子智能体(参照 dsh-xchat stop 流程):
+  // 1) interrupt 当前 turn(user authority,不依赖父 live;失败回退 ancestor);
+  // 2) 父 live 时 drainContinuableChildren 真正释放 Activation/AgentHandle;
+  // 3) workspaceRegistry.archiveSession 归档会话,使其从侧栏表面消失(可还原)。
   async endSubagent(request) {
     const childId = request && request.childSessionId;
     const parentId = request && request.parentSessionId;
     if (typeof childId !== 'string' || childId === '') return { ok: false, error: '缺少 childSessionId' };
     if (typeof parentId !== 'string' || parentId === '') return { ok: false, error: '缺少 parentSessionId' };
+    const agents = this.ctx.get('agents');
+    if (agents === undefined) return { ok: false, error: 'agents 服务不可用' };
+    const parent = agents.get(parentId);
     const subagents = this.ctx.get('subagents');
     if (subagents === undefined) return { ok: false, error: 'subagents 服务不可用' };
+    const wsr = this.ctx.get('workspaceRegistry');
+    if (wsr === undefined) return { ok: false, error: 'workspaceRegistry 服务不可用' };
     try {
-      subagents.interrupt(childId, { kind: 'user', parentSessionId: parentId });
+      try {
+        subagents.interrupt(childId, { kind: 'user', parentSessionId: parentId });
+      } catch (e) {
+        try { subagents.interrupt(childId, { kind: 'ancestor', agent: parent }); } catch (e2) { /* 继续 */ }
+      }
+      if (parent !== undefined) {
+        try { await subagents.drainContinuableChildren(parent, [childId]); } catch (e) { /* 父非 live 时降级 */ }
+      }
+      await wsr.archiveSession(childId);
       return { ok: true };
     } catch (e) {
       return { ok: false, error: (e && e.message) ? String(e.message) : String(e) };
