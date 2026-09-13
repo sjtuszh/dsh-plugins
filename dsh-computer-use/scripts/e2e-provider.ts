@@ -8,13 +8,21 @@
 
 import { PlaywrightComputerUseProvider } from '../src/providers/playwright.ts'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { join } from 'node:path'
+import { homedir } from 'node:os'
+
+// Same resolution as dsh-cost-panel/lib/host.js: DSH_HOME (if set) else
+// the OS-reported home directory. USERPROFILE is Windows-only and, when
+// unset (e.g. on Linux/macOS or a misconfigured shell), previously caused
+// the credentials path to resolve unpredictably relative to cwd, risking
+// an in-repo credentials file being picked up and committed.
+const DSH_HOME = process.env.DSH_HOME || join(homedir(), '.dsh')
 
 function readCredential(name: string): string {
-  const text = readFileSync(resolve(process.env.USERPROFILE!, '.dsh', '.credentials.yaml'), 'utf8')
-  const match = text.match(new RegExp(`^${name}:\\s*(.+)$`, 'm'))
-  if (match === null) throw new Error(`missing credential ${name}`)
-  return match[1].trim().replace(/^['"]|['"]$/g, '')
+  const text = readFileSync(join(DSH_HOME, '.credentials.yaml'), 'utf8')
+  const line = text.split(/\r?\n/).find((l) => l.startsWith(`${name}:`))
+  if (line === undefined) throw new Error(`missing credential ${name}`)
+  return line.slice(name.length + 1).trim().replace(/^['"]|['"]$/g, '')
 }
 
 const store = new Map<string, Uint8Array>()
