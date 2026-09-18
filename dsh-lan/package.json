@@ -16,9 +16,7 @@
     },
     "client": {
       "platform": "web",
-      "inject": [
-        "slots"
-      ]
+      "inject": []
     }
   },
   "files": [
