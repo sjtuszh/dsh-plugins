@@ -1,0 +1,5 @@
+# 文件树行内菜单 —— 组合插入行。
+# 本插件只改写客户端右侧栏 tab，不提供任何主机能力。
+- insert:
+    - id: file-actions
+      name: dsh-file-actions

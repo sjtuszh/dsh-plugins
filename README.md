@@ -4,61 +4,99 @@
 
 为 [DeepSeek Harness](https://github.com/deepseek-ai) Web GUI 开发的 **Cordis 静态插件** 集合。
 
-> 本仓库只保留**静态插件**（profile 挂载、npm 可发布）。动态版（`cordis_define` + `cordis_run`）已移除。
+> 本仓库只保留**静态插件**（profile 挂载、可 npm 发布）。动态版（`cordis_define` + `cordis_run`）已全部移除——它只活在一个进程里、需要批准、重启即失。
 
 ## 📦 插件列表
 
 每个目录名 = npm 包名，可直接 `dsh plugin --profile <name> add <pkg>` 一键安装。
 
-| npm 包 | 目录 | 说明 |
-|--------|------|------|
-| `dsh-organizer-sidebar` | [`dsh-organizer-sidebar/`](dsh-organizer-sidebar/) | 会话侧边栏组织器:拖拽排序/分组、已归档/已删除双 tab、批量还原删除、回收站删除 |
-| `dsh-cost-panel` | [`dsh-cost-panel/`](dsh-cost-panel/) | DeepSeek 双轨计费面板:会话头部实时计费、历史/定价表/总量统计、余额展示 |
-| `dsh-file-panel` | [`dsh-file-panel/`](dsh-file-panel/) | 文件树浏览面板:浮动按钮 + 文件树、复制路径、打开文件浏览器 |
-| `dsh-xchat` | [`dsh-xchat/`](dsh-xchat/) | 跨会话知识桥:@会话名 拉起继承记忆的子代理咨询 |
-| `dsh-lan` | [`dsh-lan/`](dsh-lan/) | 局域网（LAN）相关插件 |
+| npm 包 | 目录 | 版本 | 状态 | 说明 |
+|--------|------|------|------|------|
+| `dsh-cost-panel` | [`dsh-cost-panel/`](dsh-cost-panel/) | 1.7.0 | ✅ 已装（npm） | 双轨计费面板：会话头部实时计费、历史调用/定价表、跨会话总量统计、DeepSeek API 余额 |
+| `dsh-organizer-sidebar` | [`dsh-organizer-sidebar/`](dsh-organizer-sidebar/) | 1.3.7 | ✅ 已装（npm `^1.0.7`，仓库领先） | 会话侧边栏组织器：拖拽分组/排序、已归档/已删除双 tab、批量还原、子代理管理 |
+| `dsh-xchat` | [`dsh-xchat/`](dsh-xchat/) | 1.0.7 | ✅ 已装（npm） | 跨会话知识桥：`@` 会话候选 + 拖拽会话入聊天窗 + `xchat_query` 工具 |
+| `dsh-lan` | [`dsh-lan/`](dsh-lan/) | 0.2.0 | ✅ 已装（npm `^0.2.1`） | LAN 网关 + 机器切换器：把各机 loopback 的 DSH 上抛局域网并互相内嵌 |
+| `dsh-computer-use` | [`dsh-computer-use/`](dsh-computer-use/) | 0.1.0 | ✅ 已装（link） | 模型无关的 Computer Use 能力：浏览器/桌面 provider、视觉感知、`computer_*` 与 `workflow_*` 工具 |
+| `dsh-file-actions` | [`dsh-file-actions/`](dsh-file-actions/) | 0.1.0 | ✅ 已装（link） | **新增**：给**官方**右侧栏 Files 文件树加行内 ⋯ 菜单（复制文件地址 / 在文件管理器中显示），以 extension 档接管 `kind: files`，不改官方包 |
+| `dsh-file-panel` | [`dsh-file-panel/`](dsh-file-panel/) | 1.0.1 | ⛔ 已退役 | 旧的浮动文件树面板。DSH 0.1.5 官方右栏 Files tab + `dsh-resource://file/**` 文档预览 + 会话头部 Open In... 已覆盖其功能，已从 profile 卸载（`dsh-file-actions` 接替其中的行内动作） |
+| `dsh-agent-teams` | `dsh-agent-teams/` | 0.1.5 | 🔒 独立 fork | 多智能体团队（package.json 内名为 `dsh-agent-squad`）。有独立 remote，被 `.gitignore` 排除，不在本仓库跟踪范围 |
+| `dsh-tray` | [`dsh-tray/`](dsh-tray/) | — | 🧰 独立工具 | Windows 系统托盘启动器（无 `package.json`，不是插件） |
 
-## 🚀 安装
+## 🖥️ 参考部署现状（profile: `web`）
 
-```powershell
-dsh plugin --profile web add dsh-organizer-sidebar    # 任意插件名
+```
+dependencies                       dsh.profile.bundles
+──────────────                     ───────────────────
+dsh-computer-use    link:…         @deepseek-ai/dsh-base
+dsh-cost-panel      ^1.7.0         @deepseek-ai/dsh-web-app
+dsh-file-actions    link:…         dsh-computer-use
+dsh-lan             ^0.2.1         dsh-cost-panel
+dsh-organizer-sidebar ^1.0.7       dsh-xchat
+dsh-xchat           ^1.0.7         dsh-organizer-sidebar
+                                   dsh-lan
+                                   dsh-file-actions
 ```
 
-安装后重启 `dsh web` 生效。回滚：`dsh plugin --profile web rm <pkg>` + 重启。
+## 🚀 安装 / 卸载
+
+```powershell
+dsh plugin --profile web add dsh-cost-panel            # npm 包
+dsh plugin --profile web add link:C:/path/to/dsh-file-actions   # 本地开发中（link）
+dsh plugin --profile web remove dsh-file-actions       # 卸载
+```
+
+安装后**重启 `dsh web`** 生效（客户端模块图与 bundle 在启动时缓存）。回滚：`remove` + 重启。
 
 > ⚠️ pnpm v11 默认 `minimumReleaseAge: 10 天`：刚发布的包会被拦截，钉版本号安装：
-> `dsh plugin --profile web add dsh-organizer-sidebar@<version>`
+> `dsh plugin --profile web add dsh-cost-panel@<version>`
+
+## 🧰 维护工具（[`tools/`](tools/)）
+
+DSH 大版本升级会让插件成批损坏（模块改名、服务消失、客户端依赖图变化）。[`tools/`](tools/) 固化了标准动作：
+
+1. `node tools/inventory-installed.mjs <profile>/node_modules` —— 体检已装插件的 `inject`、`bundle.patch`、残留 API
+2. `node tools/fix-client-inject.mjs <package.json…>` —— 批量修 `inject`（改完 `JSON.parse` 校验，不合法不落盘）
+3. 重启 `dsh web` 验证
+
+改客户端 bundle 前先跑 `node tools/smoke-file-actions.mjs dsh-file-actions/lib/client.js <含 react 的 node_modules>`——它的桩 ctx 复刻了 Cordis 的 inject 门禁，能在重启之前拦住「漏声明服务 → `dsh web` 起不来」这类崩溃。
 
 ## 📁 仓库结构
 
 ```
 dsh-plugins/
 ├── README.md                      # 本文件
-├── LICENSE                        # MIT 许可证
-├── MEMORY.md                      # 开发记忆(架构、踩坑、静态化方案)
-├── COST_PANEL_REQUIREMENTS.md     # 计费插件需求说明
-├── dsh-organizer-sidebar/         # npm: dsh-organizer-sidebar(单包,UI + Typert 自挂)
-├── dsh-cost-panel/                # npm: dsh-cost-panel(单包)
-├── dsh-file-panel/                # npm: dsh-file-panel(单包)
-├── dsh-xchat/                     # npm: dsh-xchat
-├── dsh-lan/                       # npm: dsh-lan
-├── dsh-tray/                      # Windows 系统托盘启动器(独立工具,非插件)
-├── dsh-computer-use/              # 独立工具(非插件)
-└── dsh-agent-teams/               # 独立仓库(fork,自带 remote)
+├── LICENSE                        # MIT
+├── MEMORY.md                      # 开发记忆（架构、框架坑、踩坑实录）
+├── tools/                         # 维护工具（升级体检 / inject 修复 / 冒烟测试）
+├── dsh-cost-panel/                # 单包：Host + Client bundle + Typert 清单
+├── dsh-organizer-sidebar/         # 单包：影子替换 sidebar.workspaces
+├── dsh-xchat/                     # 单包：@ 候选 + xchat_query 工具
+├── dsh-lan/                       # 单包：Host 网关 + 客户端切换器
+├── dsh-computer-use/              # 能力 seam + provider + 设置页
+├── dsh-file-actions/              # 纯客户端：接管官方 files tab 正文
+├── dsh-file-panel/                # 已退役（保留源码以供参考/回滚）
+├── dsh-tray/                      # 独立工具（Windows 托盘启动器）
+└── dsh-agent-teams/               # 独立 fork 仓库（gitignore，不在跟踪范围）
 ```
 
-每个插件包的结构（单包范本）：
+单包范本（以 `dsh-cost-panel` 为例）：
+
 ```
-dsh-organizer-sidebar/
-├── package.json        # dsh.bundle.patch + dsh.client 声明(files 白名单)
-├── cordis.patch.yml    # bundle patch(install 时自动应用,一行 insert)
+dsh-cost-panel/
+├── package.json        # dsh.bundle.patch + dsh.client 声明（files 白名单）
+├── cordis.patch.yml    # bundle patch：install 时自动应用的一行 insert
 ├── README.md
 └── lib/
-    ├── host.js         # Host 半边
-    ├── client.js       # Client bundle
-    ├── typert.host.js  # Typert 严格清单(如有)
-    └── typert.remote-client.js  # Remote 描述符(如有)
+    ├── host.js                    # Host 半边
+    ├── client.js                  # Client bundle（window.__ModuleLoader__.load）
+    ├── typert.host.js             # Typert 严格清单（如有）
+    └── typert.remote-client.js    # Remote 描述符（如有）
 ```
+
+## ⚠️ 两条硬约定
+
+1. **客户端 `inject` 必须与 `apply()` 实际访问的服务一一对应**（含 `remote.xxx` 这样的点号路径），否则运行时报 `cannot get property "x" without inject`，**`dsh web` 直接起不来**。详见 [MEMORY.md §4](MEMORY.md)。
+2. **别人写不出来的效果，先找官方扩展席位**：改官方行为优先用官方公开的档位/席位（如 `sidebarRightTabs` 的 `extension` 档接管 `builtin`），而不是改官方包或抢 DOM——前者升级不丢，卸载即恢复。
 
 ## 📄 许可证
 

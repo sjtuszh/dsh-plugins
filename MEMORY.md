@@ -367,3 +367,54 @@ if (s.baseline === null) {
 - **释放后从列表中消失（v1.3.1）**：`childrenOf` 最终过滤加 `!archived.has(id)`（`subagentsByParent` catalog 会保留已归档子代），使已释放/删除的子代理不再出现在「展开子智能体列表」。
 - client：子代理行 ⋯ 菜单 kind 'subagent'（rename-subagent/fork-subagent/end-subagent）；调 `ctx.get("remote.organizer").spawnSubagent/forkSubagent/endSubagent`。
 - 注意：host `listChildren` 是异步；fork 源子代理冷恢复依赖 `agents.resume` 支持该会话（persisted session 可恢复）。已同步安装副本 1.3.1，待重启验证。
+
+---
+
+## 13. DSH 0.1.5-rc.2 升级复盘（2026-09）
+
+### 13.1 升级后的故障面：陈旧的客户端 inject
+
+- 现象：升级后插件 UI 不加载；宿主探针 `ctx.get('clientModules').graph()` 报 `danglingDeps`。
+- 根因：0.1.5 部署里**已不存在** `@deepseek-ai/dsh-client-runtime`，而 5 个插件仍把它写在 `dsh.client.inject`（以及遗留的 `dshClient.inject`）里；`dsh-lan` 还误把**服务名** `slots` 填进模块 id 位。
+- 修法：只改 `"inject": [...]` 数组**内部**（不要用裸正则扫全文——`,"@deepseek-ai/dsh-client-runtime"` 会误伤 `peerDependencies` 里同名键后面的冒号），保留缩进，改完 `JSON.parse` 校验通过才落盘 → `tools/fix-client-inject.mjs`。
+- **客户端模块图与 bundle 都是 `dsh web` 启动时缓存的**：改完不重启不生效（探针 rev 不变就是证据），且重启前单独刷新页面会让旧进程去取已删除的 bundle 而报 404。
+
+### 13.2 官方 0.1.5 已经做到了什么（决定插件去留）
+
+| 能力 | 官方现状 | 结论 |
+|---|---|---|
+| 文件浏览 | 右栏 Files tab（cwd 为根、懒加载）+ 文档预览（`dsh-resource://file/**`）+ 会话头 Open In...（**只收目录**） | 取代 `dsh-file-panel`（已卸载） |
+| 计费 | 只有 token 计量：`dsh-token-meter` 三投影 `tokenUsage`/`contextPressure`/`contextBreakdown` + `dsh-session-stats`；README 明言「占用是参考数字，**不是计费记录**」；无货币/定价表/跨会话汇总/余额 | `dsh-cost-panel` 不可替代 |
+| 会话列表 | 官方侧栏有搜索/分组/手动排序/重命名/fork/归档；**无**会话删除、回收站、批量操作、自定义分组 | organizer 增量仍真实 |
+| 跨会话 | `@` 管线（`ui-input-trigger`+`ui-reference`）的 session reference 是**只读有界快照**，「没有实时链接：不是 fork、恢复、订阅」 | xchat 的 fork 问答仍独有（自绘 `@` 菜单属重复建设，可瘦身） |
+| 计算机使用 | 官方 0：全包检索 `playwright\|CDP\|screenshot` 零命中；`dsh-tool-workflow` 编排的是 subagent 不是浏览器 | `dsh-computer-use` 不可替代 |
+| LAN | 官方**刻意拒绝** `--host 0.0.0.0`（防远程代码执行）；新增认证层（启动 token→签名 cookie，未认证 401）与 `--trusted-host` 浏览器信任围栏 | `dsh-lan` 仍必需，但需适配新认证 |
+
+### 13.3 新增 `dsh-file-actions`：用官方档位接管官方 tab（范式）
+
+官方「文件」tab 是 `kind:'files'` + `priority:'builtin'`。右栏 tab 注册表规定「一个 kind 最多一份 builtin + 一份 extension，**extension 生效；它离开后 builtin 恢复**」，因此：
+
+```js
+ctx.sidebarRightTabs.register({ id: 'dsh-file-actions', kind: 'files', priority: 'extension', title, guide })
+ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: 'dsh-file-actions' }, Body))
+```
+
+- **不碰官方任何文件**：升级不丢、卸载即恢复。这是「改官方行为」的首选范式，优于改官方包或抢 DOM。
+- 「在文件管理器中显示」直接 `POST /open-in-app/open {app:'explorer', path:<绝对目录>}`（官方路由自带同源/信任围栏与认证，且只接受存在的**目录**，文件取其父目录）→ 本插件**主机半边为空**，无需自造 explorer/subprocess/Typert。
+- 列目录沿用官方 `remote.workspaceFiles.list(sessionId, absPath, signal)`；文件行用**复刻**的 `fileAddressFor` 生成 `dsh-resource://file/session/...` 交给 `tab.actions.openResource`。
+- 正文注册无需 `store`/`inject` 面：状态用组件内 React state（每 tab 一份），目录懒加载、展开态保留即可（官方用 Slot store 是为了跨挂载存活，代价是需要 `@deepseek-ai/dsh-client-store`）。
+- 行内菜单用**视口固定定位 + 贴底翻转**，避免被面板 `overflow:auto` 裁掉。
+
+### 13.4 真实踩坑：客户端 inject 漏声明 → `dsh web` 直接起不来
+
+- 现象：重启失败，报 `cannot get property "remote" without inject`（cordis 反射代理）。
+- 原因：`apply()` 里写了 `boundRemote = ctx.remote`，而 `inject` 只有 `['slots','sidebarRightTabs','remote.workspaceFiles']`——**漏了 `'remote'`**。官方同款是 `["slots","locale","sidebarRightTabs","remote","remote.workspaceFiles"]`。
+- **二次教训（更重要）**：当时冒烟测试的桩 ctx 是普通对象，随便读什么属性都返回，所以漏声明测不出来。现在 `tools/smoke-file-actions.mjs` 用 `Proxy` 复刻 inject 门禁，并附**回归证明**（故意删掉 `'remote'`，测试必须失败）。§4.2 早就记了这个坑却仍然踩到——**「声明与访问一一对应」要当成硬检查，测试桩必须会拒绝未声明访问**。
+
+### 13.5 状态
+
+- 已装（profile `web`）：`dsh-cost-panel@1.7.0`、`dsh-organizer-sidebar@1.0.7`(npm)、`dsh-xchat@1.0.7`、`dsh-lan@0.2.1`、`dsh-computer-use`(link)、`dsh-file-actions`(link)
+- 已卸载：`dsh-file-panel`（回滚：profile 的 `cordis.patch.yml.bak-before-file-panel-removal` + 包目录放回 `node_modules`）
+- 未恢复：`dsh-agent-teams`（官方 agent presets + subagent UI + workflow 已覆盖大部分；**具名团队**未覆盖）——它另有独立 remote，被 `.gitignore` 排除
+- 版本漂移：仓库 `organizer` 1.3.7 vs 已装 1.0.7；仓库 `lan` 0.2.0 vs 已装 0.2.1（本地源码领先 npm，发布前需对齐）
+

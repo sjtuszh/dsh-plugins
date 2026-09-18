@@ -1,0 +1,44 @@
+{
+  "name": "dsh-file-actions",
+  "version": "0.1.0",
+  "description": "给官方右侧栏 Files 文件树加行内 ⋯ 菜单：复制文件地址 / 在文件管理器中显示。以 extension 档接管 tab kind `files`（不改官方包，卸载即恢复官方实现）。",
+  "type": "module",
+  "main": "lib/host.js",
+  "exports": {
+    ".": "./lib/host.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sjtuszh/dsh-plugins.git"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek",
+    "harness",
+    "plugin",
+    "cordis",
+    "files",
+    "sidebar"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-api-workspace-files",
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
+    }
+  }
+}
