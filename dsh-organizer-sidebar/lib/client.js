@@ -548,20 +548,53 @@ window.__ModuleLoader__.load({
           return Math.floor(m / 1440) + '天';
         }
 
-        var expandedState = react.useState({});
+        // [fix for issue #2] 折叠状态单一真相源:
+        //  原实现存在两个问题——
+        //  ① 翻转基准与渲染读取不同源: toggleExpanded 用 !e[key](首击 undefined->true),
+        //     分组渲染却读 g.expanded(默认视为展开), 故分组要点两次才收起;
+        //  ② 持久化不完整: 分组折叠写进 host 的 g.expanded, 工作区(w:)/未分组('')没有
+        //     保存通道, 且 useState({}) 从不回填 ⇒ 重启后一律展开。
+        //  现改为 localStorage 单一真相源, 未记录时容器默认展开、子代理(s:)默认折叠;
+        //  首次加载时迁移旧版存在 g.expanded 里的折叠态。
+        var EXPANDED_STORE_KEY = 'dsh-organizer-sidebar:expanded';
+        function isContainerKey(key) { return key === '' || key.slice(0, 2) === 'g:' || key.slice(0, 2) === 'w:'; }
+        function loadExpanded() {
+          var map = {};
+          try {
+            var raw = window.localStorage.getItem(EXPANDED_STORE_KEY);
+            var o = raw ? JSON.parse(raw) : null;
+            if (o && typeof o === 'object' && !Array.isArray(o)) map = o;
+          } catch (e) { map = {}; }
+          // 首次迁移: 把旧版存在 host 侧的分组折叠状态搬进来(只搬折叠态)
+          try {
+            for (var i = 0; i < persisted.groups.length; i++) {
+              var pg = persisted.groups[i];
+              var pk = 'g:' + pg.id;
+              if (map[pk] === undefined && pg.expanded === false) map[pk] = false;
+            }
+          } catch (e) { /* noop */ }
+          return map;
+        }
+        function saveExpanded(map) {
+          try { window.localStorage.setItem(EXPANDED_STORE_KEY, JSON.stringify(map)); } catch (e) { /* noop */ }
+        }
+
+        var expandedState = react.useState(loadExpanded);
         var expanded = expandedState[0], setExpanded = expandedState[1];
         function toggleExpanded(key) {
           setExpanded(function (e) {
             var next = Object.assign({}, e);
-            next[key] = !e[key];
-            if (key.slice(0, 2) === 'g:') {
-              var gid = key.slice(2);
-              persist(groups.map(function (g) { return g.id === gid ? Object.assign({}, g, { expanded: next[key] }) : g; }), order);
-            }
+            var cur = next[key];
+            if (cur === undefined) cur = isContainerKey(key);
+            next[key] = !cur;
+            saveExpanded(next);
             return next;
           });
         }
-        function isExpanded(key) { return expanded[key] !== false; }
+        function isExpanded(key) {
+          if (expanded[key] !== undefined) return expanded[key];
+          return isContainerKey(key);
+        }
 
         // account key a session currently lives in: 'g:<id>' (user group) |
         // 'w:<wsId>' (workspace loose) | '' (ungrouped)
@@ -1331,7 +1364,7 @@ window.__ModuleLoader__.load({
         function userGroupNode(g) {
           var key = 'g:' + g.id;
           var sessions = orderedIn(key, g.sessionIds.filter(visible));
-          var expandedNow = g.expanded !== false;
+          var expandedNow = isExpanded(key); // [fix for issue #2] 与 toggleExpanded 同一真相源
           var overGroup = drag && dragOverGroup === g.id;
           var dotSize = groupSize(sessions.length);
           return react.createElement('div', { key: key, className: 'sorg-grp' },
