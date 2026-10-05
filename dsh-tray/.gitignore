@@ -1,2 +1,10 @@
 # Runtime log (regenerated on every launch)
 dsh-tray.log
+
+# Runtime artifact: latest captured launch URL (holds a live one-time token)
+dsh-tray-login-url.txt
+
+# Build artifacts and backups (DshTray.exe itself is tracked)
+selfcheck.exe
+DshTray.new.exe
+DshTray.exe.old-*
