@@ -6,6 +6,26 @@
 
 > 本仓库只保留**静态插件**（profile 挂载、可 npm 发布）。动态版（`cordis_define` + `cordis_run`）已全部移除——它只活在一个进程里、需要批准、重启即失。
 
+## 🖥️ 换新机？先看《新机 DSH 配置指南》
+
+把本机这套环境完整复刻到一台新机器（Windows）的全部步骤——装 DSH、**过认证**（`?token=` URL / 30 天 cookie / iframe 注入代理）、
+装插件、配 MCP（GitHub / 立创商城 / LTspice）、VS Code 面板桥、托盘启动器、验证清单、踩坑速查：
+
+**➡️ [`docs/new-machine-setup.zh.md`](docs/new-machine-setup.zh.md)**
+
+一页速记：
+
+```powershell
+npm i -g @deepseek-ai/dsh
+dsh web                                   # 首次自动初始化 web profile；记下那行带 ?token= 的 URL 并打开一次
+dsh plugin --profile web add dsh-cost-panel@1.7.1
+dsh plugin --profile web add dsh-organizer-sidebar@1.3.8
+dsh plugin --profile web add dsh-xchat@1.0.8
+dsh plugin --profile web add dsh-lan@0.2.1
+dsh plugin --profile web add dsh-file-actions@0.1.0
+# 在 cordis.patch.yml 里加 MCP 行，然后重启 dsh web
+```
+
 ## 📦 插件列表
 
 每个目录名 = npm 包名，可直接 `dsh plugin --profile <name> add <pkg>` 一键安装。
@@ -71,6 +91,7 @@ dsh-plugins/
 ├── README.md                      # 本文件
 ├── LICENSE                        # MIT
 ├── MEMORY.md                      # 开发记忆（架构、框架坑、踩坑实录）
+├── docs/                          # 文档：新机 DSH 配置指南
 ├── tools/                         # 维护工具（升级体检 / inject 修复 / 冒烟测试 / 认证接入）
 ├── dsh-cost-panel/                # 单包：Host + Client bundle + Typert 清单
 ├── dsh-organizer-sidebar/         # 单包：影子替换 sidebar.workspaces
