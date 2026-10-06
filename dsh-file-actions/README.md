@@ -57,9 +57,11 @@ dsh plugin --profile web remove dsh-file-actions
 
 ```powershell
 # 在 dsh-plugins/ 仓库根目录
+# 需要任意一个含 react + react-dom 的 node_modules；没有就临时装一个：
+npm i --prefix "$env:TEMP\dsh-smoke" react react-dom
 node tools/smoke-file-actions.mjs `
   dsh-file-actions/lib/client.js `
-  dsh-computer-use/node_modules          # 任意含 react + react-dom 的 node_modules
+  "$env:TEMP\dsh-smoke/node_modules"
 ```
 
 覆盖：bundle 自注册、`apply()` 无异常并返回 disposer、注册项（kind/档位/id/guide/标题）、资源地址与路径工具、Header/Entry/Level/RowMenu 渲染、行内 ⋯ 按钮存在。

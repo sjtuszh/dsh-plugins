@@ -36,9 +36,11 @@ DSH 每次大版本升级都会让第三方插件成批损坏（模块改名、�
 根因不只是那行代码，还有**测试假阳性**：当时的桩 ctx 是普通对象，随便读什么属性都返回，所以漏声明测不出来。现在桩 ctx 用 `Proxy` 复刻 Cordis 的 inject 门禁（读未声明服务即抛同样的错），并附一条**回归证明**——故意把 `'remote'` 从声明里删掉，测试必须失败才算通过。
 
 ```powershell
+# 需要任意一个含 react + react-dom 的 node_modules；没有就临时装一个：
+npm i --prefix "$env:TEMP\dsh-smoke" react react-dom
 node tools/smoke-file-actions.mjs `
   dsh-file-actions\lib\client.js `
-  dsh-computer-use\node_modules
+  "$env:TEMP\dsh-smoke\node_modules"
 ```
 
 改任何客户端 bundle 之前先跑它，能在重启之前拦住这一类崩溃。相关框架坑见 `../MEMORY.md` §4.2。

@@ -387,7 +387,7 @@ if (s.baseline === null) {
 | 计费 | 只有 token 计量：`dsh-token-meter` 三投影 `tokenUsage`/`contextPressure`/`contextBreakdown` + `dsh-session-stats`；README 明言「占用是参考数字，**不是计费记录**」；无货币/定价表/跨会话汇总/余额 | `dsh-cost-panel` 不可替代 |
 | 会话列表 | 官方侧栏有搜索/分组/手动排序/重命名/fork/归档；**无**会话删除、回收站、批量操作、自定义分组 | organizer 增量仍真实 |
 | 跨会话 | `@` 管线（`ui-input-trigger`+`ui-reference`）的 session reference 是**只读有界快照**，「没有实时链接：不是 fork、恢复、订阅」 | xchat 的 fork 问答仍独有（自绘 `@` 菜单属重复建设，可瘦身） |
-| 计算机使用 | 官方 0：全包检索 `playwright\|CDP\|screenshot` 零命中；`dsh-tool-workflow` 编排的是 subagent 不是浏览器 | `dsh-computer-use` 不可替代 |
+| 计算机使用 | 官方 0：全包检索 `playwright\|CDP\|screenshot` 零命中；`dsh-tool-workflow` 编排的是 subagent 不是浏览器 | `dsh-computer-use` 曾不可替代（**已于 2026-10 移除，见 §13.5/§13.6**） |
 | LAN | 官方**刻意拒绝** `--host 0.0.0.0`（防远程代码执行）；新增认证层（启动 token→签名 cookie，未认证 401）与 `--trusted-host` 浏览器信任围栏 | `dsh-lan` 仍必需，但需适配新认证 |
 
 ### 13.3 新增 `dsh-file-actions`：用官方档位接管官方 tab（范式）
@@ -413,8 +413,25 @@ ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sid
 
 ### 13.5 状态
 
-- 已装（profile `web`）：`dsh-cost-panel@1.7.0`、`dsh-organizer-sidebar@1.0.7`(npm)、`dsh-xchat@1.0.7`、`dsh-lan@0.2.1`、`dsh-computer-use`(link)、`dsh-file-actions`(link)
-- 已卸载：`dsh-file-panel`（回滚：profile 的 `cordis.patch.yml.bak-before-file-panel-removal` + 包目录放回 `node_modules`）
-- 未恢复：`dsh-agent-teams`（官方 agent presets + subagent UI + workflow 已覆盖大部分；**具名团队**未覆盖）——它另有独立 remote，被 `.gitignore` 排除
-- 版本漂移：仓库 `organizer` 1.3.7 vs 已装 1.0.7；仓库 `lan` 0.2.0 vs 已装 0.2.1（本地源码领先 npm，发布前需对齐）
+- 已装（profile `web`，2026-10-06）：`dsh-cost-panel@1.7.0`、`dsh-organizer-sidebar@1.0.7`(npm)、`dsh-xchat@1.0.7`、`dsh-lan@0.2.1`、`dsh-file-actions`(link)
+- 已卸载：`dsh-file-panel`（官方右栏 Files tab 取代）、`dsh-computer-use`（本地 fork；npm 上该包属**上游 `jerryweizhihao`**，无法发布）。回滚：profile 的 `cordis.patch.yml.bak-before-{file-panel,computer-use}-removal` + 把包目录放回 `node_modules`
+- 已删除：`dsh-agent-teams`（本地 109MB 目录 + 其 fork 仓库）——它的 npm 包已改名 `dsh-agent-squad@0.1.5` 独立存在
+- 版本漂移：仓库 `lan` 0.2.0 vs npm 0.2.1（本地源码落后，发布前需对齐）
+
+### 13.6 npm 发布：bypass-2FA token 已被收窄（2026-10 实测）
+
+- **直接 `npm publish` 会 403 `E_STAGE_REQUIRED`**：bypass-2FA granular token 的发布面只剩「读私有包 + 暂存」，
+  包必须由维护者用 **2FA 批准**才公开（见 npm changelog《Staged publishing…》与《npm install-time security
+  and GAT bypass2fa deprecation》）。
+- 流程：`npm stage publish`（可脚本化，token 够用）→ 记下 `stage id` → `npm stage approve <stage-id> --otp <6位码>`
+  （或去 npmjs.com 的暂存队列点 Approve）。**不带 `--otp` 时 approve 返回 404 而非 401**——那个 404 是在说
+  「没建立身份」，不是「版本不存在」；别去改包名。
+- **新包**：npm 2026-10-02 起 staged publishing 支持创建新包（此前需要 direct-capable token）；暂存后注册表里会出现
+  `0.0.0-stage` 占位版本。
+- **版本号不能重发** → 每次改代码都要提版本（本次：cost-panel 1.7.1 / xchat 1.0.8 / organizer 1.3.8 / file-actions 0.1.0）。
+- **归属决定「能不能发」**，与代码无关：`dsh-computer-use` 的 npm 维护者是 `jerryweizhihao`、
+  `@nanmicoder/dsh-agent-teams` 属 `relakkes` → 这两个包**永远发不了**；解法是 fork 后改成自己的包名
+  （如 `dsh-agent-squad`）。查归属：`curl https://registry.npmjs.org/<pkg>` 看 `maintainers`。
+- 安装侧：pnpm 11 的 `minimumReleaseAge`（10 天）会拦住刚发布的版本 → 在
+  `profiles/web/pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude` 里按 `pkg@ver` 放行。
 

@@ -12,24 +12,28 @@
 
 | npm 包 | 目录 | 版本 | 状态 | 说明 |
 |--------|------|------|------|------|
-| `dsh-cost-panel` | [`dsh-cost-panel/`](dsh-cost-panel/) | 1.7.0 | ✅ 已装（npm） | 双轨计费面板：会话头部实时计费、历史调用/定价表、跨会话总量统计、DeepSeek API 余额 |
-| `dsh-organizer-sidebar` | [`dsh-organizer-sidebar/`](dsh-organizer-sidebar/) | 1.3.7 | ✅ 已装（npm `^1.0.7`，仓库领先） | 会话侧边栏组织器：拖拽分组/排序、已归档/已删除双 tab、批量还原、子代理管理 |
-| `dsh-xchat` | [`dsh-xchat/`](dsh-xchat/) | 1.0.7 | ✅ 已装（npm） | 跨会话知识桥：`@` 会话候选 + 拖拽会话入聊天窗 + `xchat_query` 工具 |
-| `dsh-lan` | [`dsh-lan/`](dsh-lan/) | 0.2.0 | ✅ 已装（npm `^0.2.1`） | LAN 网关 + 机器切换器：把各机 loopback 的 DSH 上抛局域网并互相内嵌 |
-| `dsh-computer-use` | [`dsh-computer-use/`](dsh-computer-use/) | 0.1.0 | ✅ 已装（link） | 模型无关的 Computer Use 能力：浏览器/桌面 provider、视觉感知、`computer_*` 与 `workflow_*` 工具 |
-| `dsh-file-actions` | [`dsh-file-actions/`](dsh-file-actions/) | 0.1.0 | ✅ 已装（link） | **新增**：给**官方**右侧栏 Files 文件树加行内 ⋯ 菜单（复制文件地址 / 在文件管理器中显示），以 extension 档接管 `kind: files`，不改官方包 |
+| `dsh-cost-panel` | [`dsh-cost-panel/`](dsh-cost-panel/) | 1.7.1 | ✅ 已装（npm `1.7.0`） | 双轨计费面板：会话头部实时计费、历史调用/定价表、跨会话总量统计、DeepSeek API 余额 |
+| `dsh-organizer-sidebar` | [`dsh-organizer-sidebar/`](dsh-organizer-sidebar/) | 1.3.8 | ✅ 已装（npm `1.0.7`，落后 5 个小版本） | 会话侧边栏组织器：拖拽分组/排序、已归档/已删除双 tab、批量还原、子代理管理 |
+| `dsh-xchat` | [`dsh-xchat/`](dsh-xchat/) | 1.0.8 | ✅ 已装（npm `1.0.7`） | 跨会话知识桥：`@` 会话候选 + 拖拽会话入聊天窗 + `xchat_query` 工具 |
+| `dsh-lan` | [`dsh-lan/`](dsh-lan/) | 0.2.0 | ✅ 已装（npm `0.2.1`） | LAN 网关 + 机器切换器：把各机 loopback 的 DSH 上抛局域网并互相内嵌。⚠️ 仓库源码比 npm 旧，发布前需先对齐 |
+| `dsh-file-actions` | [`dsh-file-actions/`](dsh-file-actions/) | 0.1.0 | ✅ 已装（link） | 给**官方**右侧栏 Files 文件树加行内 ⋯ 菜单（复制文件地址 / 在文件管理器中显示），以 extension 档接管 `kind: files`，不改官方包 |
 | `dsh-file-panel` | [`dsh-file-panel/`](dsh-file-panel/) | 1.0.1 | ⛔ 已退役 | 旧的浮动文件树面板。DSH 0.1.5 官方右栏 Files tab + `dsh-resource://file/**` 文档预览 + 会话头部 Open In... 已覆盖其功能，已从 profile 卸载（`dsh-file-actions` 接替其中的行内动作） |
-| `dsh-agent-teams` | `dsh-agent-teams/` | 0.1.5 | 🔒 独立 fork | 多智能体团队（package.json 内名为 `dsh-agent-squad`）。有独立 remote，被 `.gitignore` 排除，不在本仓库跟踪范围 |
 | `dsh-tray` | [`dsh-tray/`](dsh-tray/) | — | 🧰 独立工具 | Windows 系统托盘启动器（无 `package.json`，不是插件） |
+
+> ⚠️ `dsh-cost-panel@1.7.1`、`dsh-xchat@1.0.8`、`dsh-organizer-sidebar@1.3.8`、`dsh-file-actions@0.1.0`
+> 已 `npm stage publish` 到 npm 暂存区，**等维护者用 2FA 批准后才会公开**（npm 已收窄 bypass-2FA token：
+> 只能暂存，不能直接发布）。流程见 [MEMORY.md §13.6](MEMORY.md)。
+
+**已移除**：`dsh-computer-use`（本地 fork，npm 上该包属上游 `jerryweizhihao`）、`dsh-agent-teams`
+（fork 仓库，其 npm 包已改名 `dsh-agent-squad` 独立存在）——两者的本地目录、profile 挂载与仓库文件均已删除。
 
 ## 🖥️ 参考部署现状（profile: `web`）
 
 ```
 dependencies                       dsh.profile.bundles
 ──────────────                     ───────────────────
-dsh-computer-use    link:…         @deepseek-ai/dsh-base
-dsh-cost-panel      ^1.7.0         @deepseek-ai/dsh-web-app
-dsh-file-actions    link:…         dsh-computer-use
+dsh-cost-panel      ^1.7.0         @deepseek-ai/dsh-base
+dsh-file-actions    link:…         @deepseek-ai/dsh-web-app
 dsh-lan             ^0.2.1         dsh-cost-panel
 dsh-organizer-sidebar ^1.0.7       dsh-xchat
 dsh-xchat           ^1.0.7         dsh-organizer-sidebar
@@ -67,16 +71,14 @@ dsh-plugins/
 ├── README.md                      # 本文件
 ├── LICENSE                        # MIT
 ├── MEMORY.md                      # 开发记忆（架构、框架坑、踩坑实录）
-├── tools/                         # 维护工具（升级体检 / inject 修复 / 冒烟测试）
+├── tools/                         # 维护工具（升级体检 / inject 修复 / 冒烟测试 / 认证接入）
 ├── dsh-cost-panel/                # 单包：Host + Client bundle + Typert 清单
 ├── dsh-organizer-sidebar/         # 单包：影子替换 sidebar.workspaces
 ├── dsh-xchat/                     # 单包：@ 候选 + xchat_query 工具
 ├── dsh-lan/                       # 单包：Host 网关 + 客户端切换器
-├── dsh-computer-use/              # 能力 seam + provider + 设置页
 ├── dsh-file-actions/              # 纯客户端：接管官方 files tab 正文
 ├── dsh-file-panel/                # 已退役（保留源码以供参考/回滚）
-├── dsh-tray/                      # 独立工具（Windows 托盘启动器）
-└── dsh-agent-teams/               # 独立 fork 仓库（gitignore，不在跟踪范围）
+└── dsh-tray/                      # 独立工具（Windows 托盘启动器）
 ```
 
 单包范本（以 `dsh-cost-panel` 为例）：
