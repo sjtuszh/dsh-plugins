@@ -6,6 +6,26 @@
 
 > 本仓库只保留**静态插件**（profile 挂载、可 npm 发布）。动态版（`cordis_define` + `cordis_run`）已全部移除——它只活在一个进程里、需要批准、重启即失。
 
+## ⚠️ 环境要求（先读这个）
+
+**已验证的运行组合 = DSH `0.1.5-rc.2` + 下表版本。插件目前只适配到 DSH `0.1.5-rc.2`。**
+
+- ⛔ **请勿把 DSH 升到 `0.2.0-rc.2`**（这是 npm 上的 `latest`）。插件尚未适配 0.2.x，**我们目前也没有适配 0.2.0 的计划**；升级后插件很可能不加载，甚至让 `dsh web` 起不来。
+- 安装 DSH 时**钉版本**：`npm i -g @deepseek-ai/dsh@0.1.5-rc.2`（不要用 `@latest` / `@next` / `@alpha`）。
+- 安装插件时也**钉版本**（下表），不要用 `@latest`，以免解析到未验证的新版本。
+
+| 插件 | 实测稳定版本（本机正在跑） | 作用 |
+|---|---|---|
+| `dsh-cost-panel` | **1.7.0** | 双轨计费面板 |
+| `dsh-organizer-sidebar` | **1.0.7** | 会话侧边栏组织器 |
+| `dsh-xchat` | **1.0.7** | 跨会话知识桥 |
+| `dsh-lan` | **0.2.1** | LAN 网关 + 机器切换器 |
+| `dsh-file-actions` | **0.1.0** | 官方文件树行内 ⋯ 菜单 |
+
+> 同系列另有三个**补丁版**：`dsh-cost-panel@1.7.1`、`dsh-xchat@1.0.8`、`dsh-organizer-sidebar@1.3.8`——
+> 唯一改动是移除 DSH 0.1.5 已删除的 `@deepseek-ai/dsh-client-runtime` 声明（同样以 0.1.5-rc.2 为目标）。
+> 它们**未在上表这台机器上实跑验证**；如果你在 0.1.5-rc.2 上遇到插件 UI 不加载，可以换成它们。
+
 ## 🖥️ 换新机？先看《新机 DSH 配置指南》
 
 把本机这套环境完整复刻到一台新机器（Windows）的全部步骤——装 DSH、**过认证**（`?token=` URL / 30 天 cookie / iframe 注入代理）、
@@ -13,14 +33,14 @@
 
 **➡️ [`docs/new-machine-setup.zh.md`](docs/new-machine-setup.zh.md)**
 
-一页速记：
+一页速记（**版本已钉死**）：
 
 ```powershell
-npm i -g @deepseek-ai/dsh
-dsh web                                   # 首次自动初始化 web profile；记下那行带 ?token= 的 URL 并打开一次
-dsh plugin --profile web add dsh-cost-panel@1.7.1
-dsh plugin --profile web add dsh-organizer-sidebar@1.3.8
-dsh plugin --profile web add dsh-xchat@1.0.8
+npm i -g @deepseek-ai/dsh@0.1.5-rc.2      # 不要用 @latest（那是 0.2.0-rc.2，未适配）
+dsh web                                    # 首次自动初始化 web profile；记下带 ?token= 的 URL 并打开一次
+dsh plugin --profile web add dsh-cost-panel@1.7.0
+dsh plugin --profile web add dsh-organizer-sidebar@1.0.7
+dsh plugin --profile web add dsh-xchat@1.0.7
 dsh plugin --profile web add dsh-lan@0.2.1
 dsh plugin --profile web add dsh-file-actions@0.1.0
 # 在 cordis.patch.yml 里加 MCP 行，然后重启 dsh web
@@ -40,9 +60,9 @@ dsh plugin --profile web add dsh-file-actions@0.1.0
 | `dsh-file-panel` | [`dsh-file-panel/`](dsh-file-panel/) | 1.0.1 | ⛔ 已退役 | 旧的浮动文件树面板。DSH 0.1.5 官方右栏 Files tab + `dsh-resource://file/**` 文档预览 + 会话头部 Open In... 已覆盖其功能，已从 profile 卸载（`dsh-file-actions` 接替其中的行内动作） |
 | `dsh-tray` | [`dsh-tray/`](dsh-tray/) | — | 🧰 独立工具 | Windows 系统托盘启动器（无 `package.json`，不是插件） |
 
-> ⚠️ `dsh-cost-panel@1.7.1`、`dsh-xchat@1.0.8`、`dsh-organizer-sidebar@1.3.8`、`dsh-file-actions@0.1.0`
-> 已 `npm stage publish` 到 npm 暂存区，**等维护者用 2FA 批准后才会公开**（npm 已收窄 bypass-2FA token：
-> 只能暂存，不能直接发布）。流程见 [MEMORY.md §13.6](MEMORY.md)。
+> ℹ️ `dsh-cost-panel@1.7.1`、`dsh-xchat@1.0.8`、`dsh-organizer-sidebar@1.3.8`、`dsh-file-actions@0.1.0`
+> 已于 **2026-10-06 公开发布**（npm 现在把 bypass-2FA token 限制成「只能暂存 + 维护者 2FA 批准」，流程见
+> [MEMORY.md §13.6](MEMORY.md)）。**但请按上面「环境要求」那套实测稳定版本安装**，不要装 `@latest`。
 
 **已移除**：`dsh-computer-use`（本地 fork，npm 上该包属上游 `jerryweizhihao`）、`dsh-agent-teams`
 （fork 仓库，其 npm 包已改名 `dsh-agent-squad` 独立存在）——两者的本地目录、profile 挂载与仓库文件均已删除。
@@ -64,15 +84,25 @@ dsh-xchat           ^1.0.7         dsh-organizer-sidebar
 ## 🚀 安装 / 卸载
 
 ```powershell
-dsh plugin --profile web add dsh-cost-panel            # npm 包
-dsh plugin --profile web add link:C:/path/to/dsh-file-actions   # 本地开发中（link）
-dsh plugin --profile web remove dsh-file-actions       # 卸载
+# 钉版本安装（用上面「环境要求」里那套实测稳定版本）
+dsh plugin --profile web add dsh-cost-panel@1.7.0
+dsh plugin --profile web add dsh-organizer-sidebar@1.0.7
+dsh plugin --profile web add dsh-xchat@1.0.7
+dsh plugin --profile web add dsh-lan@0.2.1
+dsh plugin --profile web add dsh-file-actions@0.1.0
+
+# 本地源码开发（link）与卸载
+dsh plugin --profile web add link:C:/path/to/dsh-plugins/dsh-file-actions
+dsh plugin --profile web remove dsh-file-actions
 ```
 
 安装后**重启 `dsh web`** 生效（客户端模块图与 bundle 在启动时缓存）。回滚：`remove` + 重启。
 
-> ⚠️ pnpm v11 默认 `minimumReleaseAge: 10 天`：刚发布的包会被拦截，钉版本号安装：
-> `dsh plugin --profile web add dsh-cost-panel@<version>`
+> ⚠️ 两条与「装不上 / 跑不起来」直接相关的坑：
+> 1. **不要用 `@latest`**：DSH 的 `latest` 已是未适配的 `0.2.0-rc.2`；插件同理，装经过验证的那几个版本号。
+> 2. pnpm 11 的 `minimumReleaseAge` 会**拒绝发布不足 10 天的版本**，让刚发的插件装不上——把它加进
+>    `profiles\web\pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude`（写法见[指南 §3.3](docs/new-machine-setup.zh.md#33-pnpm-11-的-minimumreleaseage刚发布的版本装不上)）。
+
 
 ## 🧰 维护工具（[`tools/`](tools/)）
 

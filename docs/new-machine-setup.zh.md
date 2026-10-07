@@ -5,6 +5,25 @@
 > 适用：Windows 10/11。参考环境：Node **24.18.0**、DSH **0.1.5-rc.2**、profile **web**、`$DSH_HOME = %USERPROFILE%\.dsh`。
 > 相关背景与踩坑细节见本仓库 [MEMORY.md](../MEMORY.md)；维护工具在 [tools/](../tools/)。
 
+## ⚠️ 环境要求（先读这个）
+
+**已验证的运行组合 = DSH `0.1.5-rc.2` + 下表版本。插件只适配到 DSH `0.1.5-rc.2`。**
+
+- ⛔ **不要把 DSH 升到 `0.2.0-rc.2`**（npm 上的 `latest`）。插件尚未适配 0.2.x，**目前没有适配 0.2.0 的计划**；升上去插件很可能不加载，甚至 `dsh web` 起不来。
+- **DSH 钉版本安装**：`npm i -g @deepseek-ai/dsh@0.1.5-rc.2`（别用 `@latest` / `@next` / `@alpha`）
+- **插件也钉版本**（下面 §3.2 的表），别用 `@latest`
+
+| 插件 | 实测稳定版本（本机正在跑） |
+|---|---|
+| `dsh-cost-panel` | **1.7.0** |
+| `dsh-organizer-sidebar` | **1.0.7** |
+| `dsh-xchat` | **1.0.7** |
+| `dsh-lan` | **0.2.1** |
+| `dsh-file-actions` | **0.1.0** |
+
+> 同系列三个补丁版 `1.7.1` / `1.0.8` / `1.3.8` 的唯一改动是移除 DSH 0.1.5 已删除的
+> `@deepseek-ai/dsh-client-runtime` 声明；未在本机实跑验证，遇到插件 UI 不加载时可换用。
+
 ---
 
 ## 0. 前置
@@ -21,8 +40,9 @@
 ## 1. 安装 DSH
 
 ```powershell
-npm i -g @deepseek-ai/dsh
-dsh --version
+# ⚠️ 必须钉版本：npm 上的 @latest 已经是 0.2.0-rc.2，插件还没适配
+npm i -g @deepseek-ai/dsh@0.1.5-rc.2
+dsh --version                    # 应显示 0.1.5-rc.2
 ```
 
 `dsh` 是唯一受支持的启动器；`web` / `headless` / `sdk` / `sdk-minimal` / `acp` 这几个 profile **首次使用时会从随附模板自动初始化**到 `$DSH_HOME\profiles\<name>`，不需要手动建目录。
@@ -92,17 +112,24 @@ node tools\dsh-embed-proxy.mjs          # 回环注入代理：127.0.0.1:3081 �
 
 > 已移除：`dsh-computer-use`（本地 fork，npm 上该包属上游作者）、`dsh-agent-teams`（fork 仓库，其 npm 包已改名 `dsh-agent-squad`）。
 
-### 3.2 安装命令
+### 3.2 安装命令（**钉版本**）
 
 ```powershell
-dsh plugin --profile web add dsh-cost-panel@1.7.1
-dsh plugin --profile web add dsh-organizer-sidebar@1.3.8
-dsh plugin --profile web add dsh-xchat@1.0.8
+dsh plugin --profile web add dsh-cost-panel@1.7.0
+dsh plugin --profile web add dsh-organizer-sidebar@1.0.7
+dsh plugin --profile web add dsh-xchat@1.0.7
 dsh plugin --profile web add dsh-lan@0.2.1
 dsh plugin --profile web add dsh-file-actions@0.1.0
 
 # 装完必须重启 dsh web（客户端模块图与 bundle 都是启动时缓存的）
 ```
+
+**为什么必须写版本号**：`@latest` 可能解析到未适配的新版本；而 DSH 本体那边 `latest` 已经是 `0.2.0-rc.2`。
+上表这套是**本机实测跑得起来**的组合。
+
+> 同系列的三个补丁版 `dsh-cost-panel@1.7.1` / `dsh-xchat@1.0.8` / `dsh-organizer-sidebar@1.3.8` 只移除了
+> DSH 0.1.5 已删除的 `@deepseek-ai/dsh-client-runtime` 声明，同样以 0.1.5-rc.2 为目标；未在本机实跑验证，
+> 若在 0.1.5-rc.2 上遇到插件 UI 不加载可换用。
 
 `dsh plugin` 是在 profile 目录里转发给 **pnpm**。插件包内声明了 `dsh.bundle.patch`，安装时其 patch 会自动挂载，
 并把包名追加进 `profiles\web\package.json` 的 `dsh.profile.bundles`。
@@ -115,17 +142,18 @@ dsh plugin --profile web add link:C:/path/to/dsh-plugins/dsh-file-actions
 
 ### 3.3 pnpm 11 的 `minimumReleaseAge`（刚发布的版本装不上）
 
-pnpm 11 默认拒绝「发布不足 10 天」的版本，报「Already up to date」之类。在
-`$DSH_HOME\profiles\web\pnpm-workspace.yaml` 里放行：
+pnpm 11 默认拒绝「发布不足 10 天」的版本，报「Already up to date」之类。把要装的版本写进
+`$DSH_HOME\profiles\web\pnpm-workspace.yaml` 放行（`dsh-file-actions@0.1.0` 是刚发布的，必须放行）：
 
 ```yaml
 minimumReleaseAgeExclude:
-  - dsh-cost-panel@1.7.1
-  - dsh-xchat@1.0.8
-  - dsh-organizer-sidebar@1.3.8
   - dsh-file-actions@0.1.0
-  - dsh-lan@0.2.1
+  # 若改用补丁版，也一并放行：
+  # - dsh-cost-panel@1.7.1
+  # - dsh-xchat@1.0.8
+  # - dsh-organizer-sidebar@1.3.8
 ```
+
 
 ---
 
@@ -301,12 +329,13 @@ node tools\inventory-installed.mjs "$env:USERPROFILE\.dsh\profiles\web\node_modu
 ## 10. 一页速记
 
 ```powershell
-npm i -g @deepseek-ai/dsh                 # 装 DSH
+# 全部钉版本：DSH 停在 0.1.5-rc.2（npm 的 latest 已是未适配的 0.2.0-rc.2）
+npm i -g @deepseek-ai/dsh@0.1.5-rc.2
 dsh web                                   # 首次自动建 web profile，记下带 ?token= 的 URL
 # 用那条 URL 打开一次浏览器 → 完成认证
-dsh plugin --profile web add dsh-cost-panel@1.7.1
-dsh plugin --profile web add dsh-organizer-sidebar@1.3.8
-dsh plugin --profile web add dsh-xchat@1.0.8
+dsh plugin --profile web add dsh-cost-panel@1.7.0
+dsh plugin --profile web add dsh-organizer-sidebar@1.0.7
+dsh plugin --profile web add dsh-xchat@1.0.7
 dsh plugin --profile web add dsh-lan@0.2.1
 dsh plugin --profile web add dsh-file-actions@0.1.0
 # 在 cordis.patch.yml 里加 MCP 行（GitHub / 立创商城社区版 / LTspice）
